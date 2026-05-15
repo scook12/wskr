@@ -2,10 +2,10 @@
 
 A WebSocket for [krunvm](https://github.com/containers/krunvm). wskr ("whisker") is a collection of packages for managing krunVM virtual machines.
 
-`@wskr/server` - a JSON-RPC server implemented with the [Bun](https://github.com/oven-sh/bun) engine
-`@wskr/client` - a simple TypeScript SDK for calling KrunVM APIs via `@wskr/server`
-`@wskr/provider` - an [Agent Sandbox](https://github.com/rivet-dev/sandbox-agent) provider built using `@wskr/client`
-`@wskr/opencode-plugin` - a configurable, secure-by-default runtime policy layer for [OpenCode](https://github.com/anomalyco/opencode)
+- `@wskr/server` - a JSON-RPC server implemented with the [Bun](https://github.com/oven-sh/bun) engine
+- `@wskr/client` - a simple TypeScript SDK for calling KrunVM APIs via `@wskr/server`
+- `@wskr/provider` - an [Agent Sandbox](https://github.com/rivet-dev/sandbox-agent) provider built using `@wskr/client`
+- `@wskr/opencode-plugin` - a configurable, secure-by-default runtime policy layer for [OpenCode](https://github.com/anomalyco/opencode)
 
 ## About
 wskr started as a simple attempt to pipe an OpenCode agent's bash commands into a microVM. I wondered if I could just `await Bun.$ "docker sbx run SOME_IMG ${piped_cmd}"` and have it magically work.
