@@ -1,25 +1,25 @@
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it, mock } from "bun:test"
+import { Effect } from "effect"
 import type { RuntimePolicy } from "@wskr/types"
-import { internal } from "./index"
+import { internal, loadRuntimePolicy } from "./index"
 
 function makePolicy(): RuntimePolicy {
   return {
     version: 1,
     policyDir: "/tmp",
-    agentMap: {
+    policyFilePath: "/tmp/wskr.toml",
+    agents: {
       primary: { "*": "strict" },
       subagent: { "*": "strict" },
     },
     audit: {
       enabled: true,
-      sink: "file",
       path: "/tmp/audit.ndjson",
       include: [],
     },
-    commandPolicies: {
+    command_policies: {
       strict_readonly: {
         default_action: "deny",
-        match_mode: "normalized_command",
         rules: [
           { id: "allow_git_status", match: "git status*", action: "allow" },
           { id: "never_rm_root", match: "rm -rf /*", action: "never" },
@@ -27,60 +27,59 @@ function makePolicy(): RuntimePolicy {
       },
       release_guarded: {
         default_action: "ask",
-        match_mode: "normalized_command",
         rules: [],
       },
-    },
-    defaults: {
-      requireSandboxForBash: true,
-      failClosed: true,
-      unknownAgentProfile: "strict",
-      unknownSubagentProfile: "strict",
-      subagentInheritsParentProfile: false,
-      profileResolutionOrder: ["strict_default"],
     },
     profiles: {
       strict: {
         command_policy: "strict_readonly",
-        smol: {
-          smolfile: "strict.smol",
+        runtime: {
           image: "alpine:3.20",
-          init: [],
-        },
-        filesystem: {
           workdir: "/workspace",
           mounts: [{ host: "{repoRoot}", guest: "/workspace", mode: "rw" }],
+          cpus: 1,
+          memory_mib: 1024,
+          dns: "1.1.1.1",
+          sandbox_agent_command: "sandbox-agent",
+          sandbox_agent_args: ["server"],
         },
         network: {
-          mode: "allowlist",
+          mode: "open",
           allow_hosts: [],
-          allow_cidrs: [],
-          deny_private_ranges: true,
+        },
+        secrets: {
+          mode: "dummy",
+          allowlist: [],
+          aliases: {},
+          dummy_prefix: "DUMMY",
         },
         auth: {
-          mode: "none",
           stub_env: {},
         },
       },
       release: {
         command_policy: "release_guarded",
-        smol: {
-          smolfile: "release.smol",
+        runtime: {
           image: "alpine:3.20",
-          init: [],
-        },
-        filesystem: {
           workdir: "/workspace",
           mounts: [{ host: "{repoRoot}", guest: "/workspace", mode: "rw" }],
+          cpus: 1,
+          memory_mib: 1024,
+          dns: "1.1.1.1",
+          sandbox_agent_command: "sandbox-agent",
+          sandbox_agent_args: ["server"],
         },
         network: {
-          mode: "allowlist",
+          mode: "open",
           allow_hosts: [],
-          allow_cidrs: [],
-          deny_private_ranges: true,
+        },
+        secrets: {
+          mode: "dummy",
+          allowlist: [],
+          aliases: {},
+          dummy_prefix: "DUMMY",
         },
         auth: {
-          mode: "none",
           stub_env: {},
         },
       },
@@ -90,23 +89,12 @@ function makePolicy(): RuntimePolicy {
       fail_mode: "block",
       rules: [],
     },
-    secrets: {
-      mode: "none",
-      forceNoneWhenUntrustedInput: true,
-      classes: {},
-    },
-    transitions: {
+    pool: {
       enabled: true,
-      default_action: "deny",
-      rules: [],
-    },
-    vmPool: {
-      enabled: true,
-      maxTotalVms: 100,
-      perProfileMaxIdle: 100,
-      idleTtlSeconds: 3600,
-      startupTimeoutSeconds: 45,
-      reuse_key: [],
+      max_total_vms: 100,
+      per_profile_max_idle: 100,
+      idle_ttl_seconds: 3600,
+      startup_timeout_seconds: 45,
     },
   }
 }
@@ -151,7 +139,7 @@ describe("plugin startup retry", () => {
       },
     )
 
-    expect(started).toBe(client)
+    expect(started).toBe(client as any)
     expect(attempts).toBe(3)
   })
 
@@ -192,6 +180,20 @@ describe("plugin scope and mounts", () => {
     const resolved = internal.resolveVolumeMounts(mounts as any, "/Users/test/repo")
     expect(resolved).toEqual(["/Users/test/repo:/workspace:rw"])
   })
+
+  it("denies non-open network mode when runtime cannot enforce it", () => {
+    const denyProfile = {
+      ...makePolicy().profiles.strict,
+      network: {
+        mode: "deny",
+        allow_hosts: [],
+      },
+    }
+
+    expect(() => internal.assertNetworkPolicyEnforceable(denyProfile as any)).toThrow(
+      "not yet enforceable",
+    )
+  })
 })
 
 describe("plugin pool and teardown", () => {
@@ -203,12 +205,12 @@ describe("plugin pool and teardown", () => {
       createClient: async ({ key, profileName, profileHash }: any) => {
         createCount += 1
         return {
-          client: {},
+          client: {} as any,
           key,
           profile: profileName,
           profileHash,
           bootedAtMs: Date.now(),
-          teardown: "dispose",
+          teardown: "dispose" as const,
         }
       },
     }
@@ -237,12 +239,12 @@ describe("plugin pool and teardown", () => {
             destroySandbox: async () => {
               throw new Error("should not destroy in this test")
             },
-          },
+          } as any,
           key,
           profile: profileName,
           profileHash,
           bootedAtMs: Date.now(),
-          teardown: "dispose",
+          teardown: "dispose" as const,
         }
       },
     }
@@ -285,5 +287,96 @@ describe("plugin pool and teardown", () => {
 
     expect(destroyed).toBe(1)
     expect(disposed).toBe(0)
+  })
+})
+
+describe("plugin secrets", () => {
+  it("injects deterministic dummy secrets and tracks redactions", async () => {
+    const policy = makePolicy()
+    policy.profiles.strict.secrets = {
+      mode: "dummy",
+      allowlist: ["OPENAI_API_KEY", "alias.key"],
+      aliases: {
+        "alias.key": "ANTHROPIC_API_KEY",
+      },
+      dummy_prefix: "DUMMY",
+    }
+
+    const secrets = await internal.resolveProfileSecrets({
+      policy,
+      profileName: "strict",
+      profile: policy.profiles.strict,
+      context: {
+        ask: () => ({}) as any,
+      } as any,
+    })
+
+    expect(Object.keys(secrets.env).sort()).toEqual(["ANTHROPIC_API_KEY", "OPENAI_API_KEY"])
+    expect(secrets.env.OPENAI_API_KEY.startsWith("DUMMY_")).toBe(true)
+    expect(secrets.redactions.length).toBe(2)
+  })
+
+  it("brokers and redacts real secret when mode is brokered", async () => {
+    const policy = makePolicy()
+    policy.profiles.strict.secrets = {
+      mode: "brokered",
+      allowlist: ["OPENAI_API_KEY"],
+      aliases: {},
+      dummy_prefix: "DUMMY",
+    }
+
+    const previousKey = process.env.OPENAI_API_KEY
+
+    try {
+      process.env.OPENAI_API_KEY = "sk-test-real-secret"
+
+      const askMock = mock(() => ({}) as any)
+      const secrets = await internal.resolveProfileSecrets({
+        policy,
+        profileName: "strict",
+        profile: policy.profiles.strict,
+        context: {
+          ask: askMock.mockImplementation(() => Effect.void),
+        } as any,
+      })
+
+      expect(askMock).toHaveBeenCalledTimes(1)
+      expect(secrets.brokered).toEqual(["OPENAI_API_KEY"])
+      expect(secrets.redactions.some((rule) => rule.id === "brokered-OPENAI_API_KEY")).toBe(true)
+    } finally {
+      if (previousKey === undefined) {
+        delete process.env.OPENAI_API_KEY
+      } else {
+        process.env.OPENAI_API_KEY = previousKey
+      }
+    }
+  })
+})
+
+describe("runtime policy loader", () => {
+  it("fails closed for invalid wskr.toml", async () => {
+    const tempDir = await Bun.$`mktemp -d`.text()
+    const policyFile = `${tempDir.trim()}/wskr.toml`
+    await Bun.write(
+      policyFile,
+      `version = 1
+
+[profiles.strict]
+command_policy = "strict"
+`,
+    )
+
+    const previous = process.env.OPENCODE_SBX_POLICY_FILE
+    process.env.OPENCODE_SBX_POLICY_FILE = policyFile
+
+    try {
+      await expect(loadRuntimePolicy()).rejects.toThrow("Runtime policy validation failed")
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OPENCODE_SBX_POLICY_FILE
+      } else {
+        process.env.OPENCODE_SBX_POLICY_FILE = previous
+      }
+    }
   })
 })

@@ -8,7 +8,7 @@ import { appendFile, mkdir } from "node:fs/promises"
 import net from "node:net"
 import os from "node:os"
 import path from "node:path"
-import { type RuleAction, type RuntimePolicy } from "@wskr/types"
+import { type RuleAction, type RuntimePolicy, type WskrProfile } from "@wskr/types"
 import { loadRuntimePolicy } from "./runtime-policy-loader"
 
 type Profile = string
@@ -63,6 +63,12 @@ type ExecutionResult = {
   exitCode: number | null
   sandboxId: string
   durationMs: number
+}
+
+type ResolvedSecrets = {
+  env: Record<string, string>
+  redactions: Array<{ id: string; pattern: string; replacement: string }>
+  brokered: string[]
 }
 
 type ExecutionBackend = {
@@ -135,7 +141,7 @@ function matchPattern(command: string, pattern: string): boolean {
 }
 
 function resolveAgentProfile(agentName: string, policy: RuntimePolicy): ResolvedProfile {
-  const { primary, subagent } = policy.agentMap
+  const { primary, subagent } = policy.agents
   const subagentProfile = subagent[agentName]
   const primaryProfile = primary[agentName]
   const wildcardSubagent = subagent["*"]
@@ -143,8 +149,8 @@ function resolveAgentProfile(agentName: string, policy: RuntimePolicy): Resolved
 
   const isSubAgent = subagentProfile != null
   const profile = isSubAgent
-    ? (subagentProfile ?? wildcardSubagent ?? policy.defaults.unknownSubagentProfile)
-    : (primaryProfile ?? wildcardPrimary ?? policy.defaults.unknownAgentProfile)
+    ? (subagentProfile ?? wildcardSubagent ?? "strict")
+    : (primaryProfile ?? wildcardPrimary ?? "strict")
 
   const profileConfig = policy.profiles[profile]
   const commandPolicyName = profileConfig?.command_policy
@@ -165,7 +171,7 @@ function evaluateCommandPolicy(
   policyName: string,
   policy: RuntimePolicy,
 ): CommandDecision {
-  const commandPolicy = policy.commandPolicies[policyName]
+  const commandPolicy = policy.command_policies[policyName]
   if (!commandPolicy) {
     return { action: "deny", ruleId: "missing_policy", reason: "default" }
   }
@@ -229,8 +235,95 @@ function buildLocalProviderEnv(): Record<string, string> {
   return env
 }
 
+function computeDummySecretValue(
+  secretKey: string,
+  policy: RuntimePolicy,
+  profileName: string,
+): string {
+  return `${secretKey}_${policy.version}_${hashShort(profileName)}_${hashShort(secretKey)}`
+}
+
+async function resolveSecretValue(
+  aliasOrEnvKey: string,
+  context: ToolContext,
+): Promise<string | undefined> {
+  await Effect.runPromise(
+    context.ask({
+      permission: "wskr.secret",
+      patterns: [aliasOrEnvKey],
+      always: [aliasOrEnvKey],
+      metadata: {
+        reason: "secret_broker_request",
+        key: aliasOrEnvKey,
+      },
+    }),
+  )
+
+  return process.env[aliasOrEnvKey]
+}
+
+async function resolveProfileSecrets(options: {
+  policy: RuntimePolicy
+  profileName: string
+  profile: WskrProfile
+  context: ToolContext
+}): Promise<ResolvedSecrets> {
+  const { policy, profileName, profile, context } = options
+  const env: Record<string, string> = {}
+  const redactions: Array<{ id: string; pattern: string; replacement: string }> = []
+  const brokered: string[] = []
+
+  if (profile.secrets.mode === "none") {
+    return { env, redactions, brokered }
+  }
+
+  for (const key of profile.secrets.allowlist) {
+    const envKey = profile.secrets.aliases[key] ?? key
+    let realValue: string | undefined
+    if (profile.secrets.mode === "brokered") {
+      realValue = await resolveSecretValue(key, context)
+      brokered.push(key)
+    }
+
+    const dummyValue = `${profile.secrets.dummy_prefix}_${computeDummySecretValue(key, policy, profileName)}`
+    env[envKey] = dummyValue
+
+    if (realValue && realValue.length > 0) {
+      redactions.push({
+        id: `brokered-${key}`,
+        pattern: realValue.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+        replacement: "[REDACTED]",
+      })
+    }
+
+    redactions.push({
+      id: `dummy-${key}`,
+      pattern: dummyValue.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      replacement: "[REDACTED]",
+    })
+  }
+
+  return { env, redactions, brokered }
+}
+
+function assertNetworkPolicyEnforceable(profile: WskrProfile): void {
+  if (profile.network.mode === "open") {
+    return
+  }
+
+  if (profile.network.mode === "deny") {
+    throw new Error("Network mode 'deny' is not yet enforceable by runtime; refusing execution")
+  }
+
+  if (profile.network.mode === "allowlist") {
+    throw new Error(
+      "Network mode 'allowlist' is not yet enforceable by runtime; refusing execution",
+    )
+  }
+}
+
 function hasRepoRootPlaceholder(
-  mounts: RuntimePolicy["profiles"][string]["filesystem"]["mounts"],
+  mounts: RuntimePolicy["profiles"][string]["runtime"]["mounts"],
 ): boolean {
   return mounts.some((mount) => mount.host.includes("{repoRoot}"))
 }
@@ -271,7 +364,7 @@ function resolveMountHost(host: string, repoRoot: string): string {
 }
 
 function resolveVolumeMounts(
-  mounts: RuntimePolicy["profiles"][string]["filesystem"]["mounts"],
+  mounts: RuntimePolicy["profiles"][string]["runtime"]["mounts"],
   repoRoot: string,
 ): string[] {
   return mounts.map((mount) => {
@@ -316,7 +409,7 @@ async function buildWskrResolvedSpec(options: {
     throw new Error(`Profile '${profileName}' is not configured.`)
   }
 
-  const scope = getSandboxScope(context, hasRepoRootPlaceholder(profileConfig.filesystem.mounts))
+  const scope = getSandboxScope(context, hasRepoRootPlaceholder(profileConfig.runtime.mounts))
   const scopeHash = hashShort(scope)
   const vmName = sanitizeVmName(`wskr-${profileName}-${profileHash}-${scopeHash}`)
 
@@ -333,12 +426,21 @@ async function buildWskrResolvedSpec(options: {
   const dns = Bun.env.OPENCODE_WSKR_VM_DNS ?? "1.1.1.1"
 
   const baseUrl = `http://${providerHost}:${hostPort}`
-  const volumes = resolveVolumeMounts(profileConfig.filesystem.mounts, scope)
+  const volumes = resolveVolumeMounts(profileConfig.runtime.mounts, scope)
   const startEnv = Object.entries(profileConfig.auth.stub_env ?? {}).map(
     ([key, value]) => `${key}=${value}`,
   )
-  const startCommand = Bun.env.OPENCODE_SANDBOX_AGENT_BIN ?? DEFAULT_SANDBOX_AGENT_BIN
-  const startArgs = ["server", "--host", "0.0.0.0", "--port", String(agentPort)]
+  const startCommand =
+    Bun.env.OPENCODE_SANDBOX_AGENT_BIN ??
+    profileConfig.runtime.sandbox_agent_command ??
+    DEFAULT_SANDBOX_AGENT_BIN
+  const startArgs = [
+    ...profileConfig.runtime.sandbox_agent_args,
+    "--host",
+    "0.0.0.0",
+    "--port",
+    String(agentPort),
+  ]
   if (token) {
     startArgs.push("--token", token)
   } else {
@@ -349,22 +451,22 @@ async function buildWskrResolvedSpec(options: {
     vmName,
     baseUrl,
     create: {
-      image: profileConfig.smol.image,
+      image: profileConfig.runtime.image,
       name: vmName,
-      workdir: profileConfig.filesystem.workdir,
-      cpus,
+      workdir: profileConfig.runtime.workdir,
+      cpus: profileConfig.runtime.cpus ?? cpus,
       dns,
       volumes,
       ports: [`${hostPort}:${agentPort}/tcp`],
-      memoryMiB,
+      memoryMiB: profileConfig.runtime.memory_mib ?? memoryMiB,
     },
     start: {
       name: vmName,
       command: startCommand,
       args: startArgs,
       env: startEnv,
-      cpus,
-      memoryMiB,
+      cpus: profileConfig.runtime.cpus ?? cpus,
+      memoryMiB: profileConfig.runtime.memory_mib ?? memoryMiB,
     },
   }
 }
@@ -490,7 +592,7 @@ async function disposeClientEntry(entry: SandboxClientPoolEntry): Promise<void> 
 }
 
 async function enforcePoolLimit(policy: RuntimePolicy): Promise<void> {
-  const max = Math.max(1, policy.vmPool.maxTotalVms)
+  const max = Math.max(1, policy.pool.max_total_vms)
   while (sandboxClients.size > max) {
     const entries = Array.from(sandboxClients.values())
     const oldest = entries.reduce((left, right) =>
@@ -501,7 +603,7 @@ async function enforcePoolLimit(policy: RuntimePolicy): Promise<void> {
 }
 
 async function enforcePerProfileLimit(policy: RuntimePolicy): Promise<void> {
-  const maxPerProfile = Math.max(1, policy.vmPool.perProfileMaxIdle)
+  const maxPerProfile = Math.max(1, policy.pool.per_profile_max_idle)
   const entries = Array.from(sandboxClients.values())
   const grouped = new Map<string, SandboxClientPoolEntry[]>()
 
@@ -525,10 +627,7 @@ async function enforcePerProfileLimit(policy: RuntimePolicy): Promise<void> {
 }
 
 async function pruneIdleClients(policy: RuntimePolicy): Promise<void> {
-  const override = policy.vmPool.phase2TestOverrides
-  const configuredTtlSeconds = override?.enabled
-    ? override.idle_ttl_seconds
-    : policy.vmPool.idleTtlSeconds
+  const configuredTtlSeconds = policy.pool.idle_ttl_seconds
   const ttlMs = Math.max(1, configuredTtlSeconds) * 1000
   const now = Date.now()
   const entries = Array.from(sandboxClients.values())
@@ -628,7 +727,7 @@ function formatProcessOutput(result: {
 function resolveAuditPath(policy: RuntimePolicy): string {
   const stateDir =
     process.env.OPENCODE_STATE_DIR ?? path.join(os.homedir(), ".local", "share", "opencode")
-  const template = policy.audit.path ?? "{stateDir}/runtime-policy-audit.ndjson"
+  const template = policy.audit.path ?? "{stateDir}/wskr-audit.ndjson"
   const replaced = template.replace("{stateDir}", stateDir)
   return path.isAbsolute(replaced) ? replaced : path.resolve(policy.policyDir, replaced)
 }
@@ -684,10 +783,6 @@ function applyRedaction(output: string, policy: RuntimePolicy): string {
 
   let result = output
   for (const rule of policy.redaction.rules ?? []) {
-    if (rule.type !== "regex") {
-      continue
-    }
-
     try {
       const regex = new RegExp(rule.pattern, "g")
       result = result.replace(regex, rule.replacement)
@@ -727,7 +822,11 @@ export const internal = {
   formatProcessOutput,
   parseBoundedInt,
   sanitizeVmName,
+  resolveProfileSecrets,
+  assertNetworkPolicyEnforceable,
 }
+
+export { loadRuntimePolicy } from "./runtime-policy-loader"
 
 async function runCommandWithSandboxAgent(options: {
   command: string
@@ -742,14 +841,22 @@ async function runCommandWithSandboxAgent(options: {
     throw new Error(`Profile '${resolvedProfile.profile}' is not configured.`)
   }
 
-  const cwdCandidates = [
-    profileConfig.filesystem.workdir,
-    context.directory,
-    context.worktree,
-  ].filter((value, index, array) => Boolean(value) && array.indexOf(value) === index)
+  assertNetworkPolicyEnforceable(profileConfig)
+  const resolvedSecrets = await resolveProfileSecrets({
+    policy,
+    profileName: resolvedProfile.profile,
+    profile: profileConfig,
+    context,
+  })
 
-  const runtimeEnv =
-    profileConfig.auth.mode === "stub" ? (profileConfig.auth.stub_env ?? {}) : undefined
+  const cwdCandidates = [profileConfig.runtime.workdir, context.directory, context.worktree].filter(
+    (value, index, array) => Boolean(value) && array.indexOf(value) === index,
+  )
+
+  const runtimeEnv = {
+    ...(profileConfig.auth.stub_env ?? {}),
+    ...resolvedSecrets.env,
+  }
 
   let handle = await getSandboxClient(resolvedProfile.profile, policy, context)
 
@@ -898,7 +1005,23 @@ const opencodeBashTool: ToolDefinition = tool({
         policy,
         context,
       })
-      const output = applyRedaction(execution.output, policy)
+      const profileConfig = policy.profiles[resolvedProfile.profile]
+      if (!profileConfig) {
+        throw new Error(`Profile '${resolvedProfile.profile}' is not configured.`)
+      }
+      const resolvedSecrets = await resolveProfileSecrets({
+        policy,
+        profileName: resolvedProfile.profile,
+        profile: profileConfig,
+        context,
+      })
+      const output = applyRedaction(execution.output, {
+        ...policy,
+        redaction: {
+          ...policy.redaction,
+          rules: [...policy.redaction.rules, ...resolvedSecrets.redactions],
+        },
+      })
 
       await appendAuditRecord(
         policy,
@@ -917,7 +1040,12 @@ const opencodeBashTool: ToolDefinition = tool({
 
       return {
         output,
-        metadata: execution.metadata,
+        metadata: {
+          ...execution.metadata,
+          secretsMode: profileConfig.secrets.mode,
+          brokeredSecrets: resolvedSecrets.brokered,
+          networkMode: profileConfig.network.mode,
+        },
       }
     } catch (error) {
       await appendAuditRecord(
