@@ -3,7 +3,7 @@ import { createKrunClient, KrunClient, KrunClientError, rpcErrorToMessage } from
 
 type EventType = "open" | "message" | "error" | "close"
 type Listener = (event: any) => void
-type SocketState = WebSocket['CONNECTING'] | WebSocket['CLOSED'] | WebSocket['OPEN']
+type SocketState = WebSocket["CONNECTING"] | WebSocket["CLOSED"] | WebSocket["OPEN"]
 
 class FakeWebSocket {
   readyState: SocketState = WebSocket.CONNECTING
