@@ -14,6 +14,12 @@
     "dev": "bun run --workspaces dev",
     "format": "biome format --write .",
     "format:check": "biome format .",
+    "release:whoami": "bun pm whoami",
+    "release:dry-run": "bun run build && bun publish --dry-run --cwd packages/types && bun publish --dry-run --cwd packages/client && bun publish --dry-run --cwd packages/server",
+    "release:types": "bun publish --cwd packages/types",
+    "release:client": "bun publish --cwd packages/client",
+    "release:server": "bun publish --cwd packages/server",
+    "release:all": "bun run build && bun run release:whoami && bun run release:types && bun run release:client && bun run release:server",
     "test": "bun run --workspaces test",
     "typecheck": "tsc -b tsconfig.json"
   },

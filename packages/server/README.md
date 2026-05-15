@@ -66,8 +66,8 @@ bun run --filter @wskr/server test:integration:real
 ## Publishing
 
 ```bash
-bun publish --filter @wskr/types
-bun publish --filter @wskr/server
+bun publish --cwd packages/types
+bun publish --cwd packages/server
 ```
 
 Publish `@wskr/types` before `@wskr/server`.

@@ -17,5 +17,5 @@ import { RequestSchema, OpDoneSchema, type RpcRequest, type OpDone } from "@wskr
 ## Publishing
 
 ```bash
-bun publish --filter @wskr/types
+bun publish --cwd packages/types
 ```
