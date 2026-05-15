@@ -4,6 +4,11 @@ env = false
 [test]
 coverage = true
 coverageSkipTestFiles = true
+coveragePathIgnorePatterns = [
+  "**/node_modules/**",
+  "**/vendor/**",
+  "**/dist/**",
+]
 
 [install]
 minimumReleaseAge = 259200
