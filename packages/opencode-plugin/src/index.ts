@@ -132,6 +132,15 @@ const DEFAULT_SANDBOX_AGENT_PORT = 3000
 const DEFAULT_SANDBOX_AGENT_BIN = "sandbox-agent"
 const SANDBOX_START_MAX_ATTEMPTS = 3
 const SANDBOX_START_RETRY_DELAY_MS = 150
+const DEFAULT_KRUN_SOCKET_PATH = "/run/krunvmd.sock"
+const DEFAULT_KRUN_TCP_HOST = "127.0.0.1"
+const DEFAULT_KRUN_TCP_PORT = 8877
+
+type RuntimeClientOptions = {
+  url?: string
+}
+
+type EnvMap = Record<string, string | undefined>
 
 function stableStringify(value: unknown): string {
   if (Array.isArray(value)) {
@@ -150,6 +159,57 @@ function stableStringify(value: unknown): string {
 
 function hashShort(input: string): string {
   return createHash("sha256").update(input).digest("hex").slice(0, 12)
+}
+
+function normalizeNonEmpty(value: string | undefined): string | undefined {
+  const trimmed = value?.trim()
+  return trimmed && trimmed.length > 0 ? trimmed : undefined
+}
+
+function toUnixSocketWebSocketUrl(socketPath: string): string {
+  return `ws+unix://${socketPath}:/rpc`
+}
+
+function deriveKrunClientUrlFromServerEnv(env: EnvMap = process.env): string {
+  const transport = normalizeNonEmpty(env.KRUN_SERVER_TRANSPORT) ?? "unix"
+  if (transport === "tcp") {
+    const host = normalizeNonEmpty(env.KRUN_TCP_HOST) ?? DEFAULT_KRUN_TCP_HOST
+    const port = parseBoundedInt(env.KRUN_TCP_PORT, DEFAULT_KRUN_TCP_PORT, 1, 65535)
+    return `ws://${host}:${port}/rpc`
+  }
+
+  if (transport === "unix") {
+    const socketPath = normalizeNonEmpty(env.KRUN_SOCKET_PATH) ?? DEFAULT_KRUN_SOCKET_PATH
+    return toUnixSocketWebSocketUrl(socketPath)
+  }
+
+  throw new Error("KRUN_SERVER_TRANSPORT must be 'unix' or 'tcp' when deriving WSKR client URL")
+}
+
+function resolveRuntimeClientOptions(options: {
+  policy: RuntimePolicy
+  explicitClientOptions?: RuntimeClientOptions
+  env?: EnvMap
+}): RuntimeClientOptions {
+  const env = options.env ?? process.env
+  const explicitUrl = normalizeNonEmpty(options.explicitClientOptions?.url)
+  if (explicitUrl) {
+    return { url: explicitUrl }
+  }
+
+  const envOverrideUrl = normalizeNonEmpty(env.OPENCODE_WSKR_CLIENT_URL)
+  if (envOverrideUrl) {
+    return { url: envOverrideUrl }
+  }
+
+  const policyUrl = normalizeNonEmpty(options.policy.client.url)
+  if (policyUrl) {
+    return { url: policyUrl }
+  }
+
+  return {
+    url: deriveKrunClientUrlFromServerEnv(env),
+  }
 }
 
 function normalizeCommand(command: string): string {
@@ -621,6 +681,7 @@ async function createSandboxClient(options: {
   const bootedAtMs = Date.now()
   const baseUrl = process.env.OPENCODE_SANDBOX_AGENT_BASE_URL
   const token = process.env.OPENCODE_SANDBOX_AGENT_TOKEN
+  const runtimeClientOptions = resolveRuntimeClientOptions({ policy })
 
   if (baseUrl) {
     const client = await SandboxAgent.connect({
@@ -648,6 +709,7 @@ async function createSandboxClient(options: {
         sandbox: wskr({
           token,
           env: buildLocalProviderEnv(),
+          clientOptions: runtimeClientOptions,
           resolveSpec: () =>
             buildWskrResolvedSpec({
               profileName,
@@ -907,6 +969,9 @@ export const internal = {
   getSandboxScope,
   resolveMountHost,
   resolveVolumeMounts,
+  toUnixSocketWebSocketUrl,
+  deriveKrunClientUrlFromServerEnv,
+  resolveRuntimeClientOptions,
   buildWskrResolvedSpec,
   startSandboxAgentWithRetry,
   createSandboxClient,

@@ -159,6 +159,11 @@ dummy_prefix = "DUMMY"
 [profiles.release.auth]
 stub_env = {}
 
+[client]
+# Optional explicit runtime endpoint override.
+# If omitted, plugin derives URL from KRUN_SERVER_TRANSPORT and related KRUN_* vars.
+# url = "ws+unix:///run/krunvmd.sock:/rpc"
+
 [audit]
 enabled = true
 path = "{stateDir}/wskr-audit.ndjson"

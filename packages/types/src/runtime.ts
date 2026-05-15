@@ -137,6 +137,10 @@ export const WskrPoolSchema = z.object({
   startup_timeout_seconds: z.number().int().min(1).max(300).default(45),
 })
 
+export const WskrClientSchema = z.object({
+  url: z.string().min(1).max(2048).optional(),
+})
+
 export const WskrPolicySchema = z.object({
   version: z.number().int().positive().default(1),
   agents: z.object({
@@ -169,6 +173,7 @@ export const WskrPolicySchema = z.object({
     fail_mode: "block",
     rules: [],
   }),
+  client: WskrClientSchema.default({}),
   pool: WskrPoolSchema.default({
     enabled: true,
     max_total_vms: 6,
@@ -190,6 +195,7 @@ export type WskrAudit = z.infer<typeof WskrAuditSchema>
 export type WskrRedactionRule = z.infer<typeof WskrRedactionRuleSchema>
 export type WskrRedaction = z.infer<typeof WskrRedactionSchema>
 export type WskrPool = z.infer<typeof WskrPoolSchema>
+export type WskrClient = z.infer<typeof WskrClientSchema>
 export type WskrPolicy = z.infer<typeof WskrPolicySchema>
 
 export type RuntimePolicy = WskrPolicy & {

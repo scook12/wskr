@@ -89,6 +89,7 @@ function makePolicy(): RuntimePolicy {
       fail_mode: "block",
       rules: [],
     },
+    client: {},
     pool: {
       enabled: true,
       max_total_vms: 100,
@@ -98,6 +99,72 @@ function makePolicy(): RuntimePolicy {
     },
   }
 }
+
+describe("runtime client URL resolution", () => {
+  it("derives unix socket URL by default", () => {
+    const url = internal.deriveKrunClientUrlFromServerEnv({})
+    expect(url).toBe("ws+unix:///run/krunvmd.sock:/rpc")
+  })
+
+  it("derives tcp URL from server env", () => {
+    const url = internal.deriveKrunClientUrlFromServerEnv({
+      KRUN_SERVER_TRANSPORT: "tcp",
+      KRUN_TCP_HOST: "0.0.0.0",
+      KRUN_TCP_PORT: "9988",
+    })
+    expect(url).toBe("ws://0.0.0.0:9988/rpc")
+  })
+
+  it("uses precedence explicit > env override > policy > derived", () => {
+    const policy = makePolicy()
+    policy.client = {
+      url: "ws://policy-host:1001/rpc",
+    }
+
+    const env = {
+      OPENCODE_WSKR_CLIENT_URL: "ws://env-host:1002/rpc",
+      KRUN_SERVER_TRANSPORT: "tcp",
+      KRUN_TCP_HOST: "derived-host",
+      KRUN_TCP_PORT: "1003",
+    }
+
+    const explicit = internal.resolveRuntimeClientOptions({
+      policy,
+      explicitClientOptions: { url: "ws://explicit-host:1000/rpc" },
+      env,
+    })
+    expect(explicit.url).toBe("ws://explicit-host:1000/rpc")
+
+    const fromEnv = internal.resolveRuntimeClientOptions({
+      policy,
+      env,
+    })
+    expect(fromEnv.url).toBe("ws://env-host:1002/rpc")
+
+    const fromPolicy = internal.resolveRuntimeClientOptions({
+      policy,
+      env: {
+        KRUN_SERVER_TRANSPORT: "tcp",
+        KRUN_TCP_HOST: "derived-host",
+        KRUN_TCP_PORT: "1003",
+      },
+    })
+    expect(fromPolicy.url).toBe("ws://policy-host:1001/rpc")
+
+    const fromDerived = internal.resolveRuntimeClientOptions({
+      policy: {
+        ...policy,
+        client: {},
+      },
+      env: {
+        KRUN_SERVER_TRANSPORT: "tcp",
+        KRUN_TCP_HOST: "derived-host",
+        KRUN_TCP_PORT: "1003",
+      },
+    })
+    expect(fromDerived.url).toBe("ws://derived-host:1003/rpc")
+  })
+})
 
 function createToolContext(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -785,6 +852,9 @@ command_policy = "strict"
 [agents.subagent]
 "*" = "strict"
 
+[client]
+url = "ws+unix:///tmp/wskr-test.sock:/rpc"
+
 [command_policies.strict_readonly]
 default_action = "deny"
 allow = ["git status*", "git diff*"]
@@ -829,6 +899,7 @@ stub_env = {}
 
     try {
       const policy = await loadRuntimePolicy()
+      expect(policy.client.url).toBe("ws+unix:///tmp/wskr-test.sock:/rpc")
       const rules = policy.command_policies.strict_readonly.rules
       expect(rules.length).toBe(4)
       expect(rules.some((rule) => rule.match === "git status*" && rule.action === "allow")).toBe(
