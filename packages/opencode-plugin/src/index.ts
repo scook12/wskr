@@ -53,6 +53,8 @@ type SandboxClientFactory = (options: {
   key: string
 }) => Promise<SandboxClientHandle>
 
+type MountConfig = RuntimePolicy["profiles"][string]["runtime"]["mounts"][number]
+
 type SandboxPoolDeps = {
   createClient?: SandboxClientFactory
 }
@@ -416,7 +418,7 @@ function evaluateNetworkPolicy(command: string, profile: WskrProfile): ResolvedN
 function hasRepoRootPlaceholder(
   mounts: RuntimePolicy["profiles"][string]["runtime"]["mounts"],
 ): boolean {
-  return mounts.some((mount) => mount.host.includes("{repoRoot}"))
+  return mounts.some((mount: MountConfig) => mount.host.includes("{repoRoot}"))
 }
 
 function getSandboxScope(context: ToolContext, requireWorktree: boolean): string {
@@ -458,7 +460,7 @@ function resolveVolumeMounts(
   mounts: RuntimePolicy["profiles"][string]["runtime"]["mounts"],
   repoRoot: string,
 ): string[] {
-  return mounts.map((mount) => {
+  return mounts.map((mount: MountConfig) => {
     const host = resolveMountHost(mount.host, repoRoot)
     return `${host}:${mount.guest}:${mount.mode}`
   })

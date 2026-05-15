@@ -198,9 +198,10 @@ export async function loadRuntimePolicy(): Promise<RuntimePolicy> {
   }
 
   for (const [profileName, profile] of Object.entries(policy.profiles)) {
-    if (!policy.command_policies[profile.command_policy]) {
+    const profileConfig = profile as RuntimePolicy["profiles"][string]
+    if (!policy.command_policies[profileConfig.command_policy]) {
       throw new Error(
-        `Profile '${profileName}' references unknown command policy '${profile.command_policy}'.`,
+        `Profile '${profileName}' references unknown command policy '${profileConfig.command_policy}'.`,
       )
     }
   }
