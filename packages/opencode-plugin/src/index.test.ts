@@ -138,16 +138,39 @@ describe("plugin startup retry", () => {
     let attempts = 0
     const client = { id: "ok" }
 
-    const started = await internal.startSandboxAgentWithRetry(async () => {
-      attempts += 1
-      if (attempts < 3) {
-        throw new Error(`transient-${attempts}`)
-      }
-      return client as any
-    })
+    const started = await internal.startSandboxAgentWithRetry(
+      async () => {
+        attempts += 1
+        if (attempts < 3) {
+          throw new Error(`transient-${attempts}`)
+        }
+        return client as any
+      },
+      {
+        retryDelayMs: 1,
+      },
+    )
 
     expect(started).toBe(client)
     expect(attempts).toBe(3)
+  })
+
+  it("fails after max attempts", async () => {
+    let attempts = 0
+    await expect(
+      internal.startSandboxAgentWithRetry(
+        async () => {
+          attempts += 1
+          throw new Error("still failing")
+        },
+        {
+          maxAttempts: 2,
+          retryDelayMs: 1,
+        },
+      ),
+    ).rejects.toThrow("still failing")
+
+    expect(attempts).toBe(2)
   })
 })
 

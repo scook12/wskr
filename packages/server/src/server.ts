@@ -44,7 +44,7 @@ type OperationRecord = {
 }
 
 type ServerLike = {
-  stop(closeActiveConnections?: boolean): Promise<void>
+  stop(closeActiveConnections?: boolean): Promise<void> | void
 }
 
 export type CommandExecutor = (params: {
@@ -234,12 +234,13 @@ function createOperationManager(config: DaemonConfig, executor: CommandExecutor)
     const ws = activeSockets.get(operation.connectionId)
     ws?.data.opIds.delete(operation.opId)
 
-    setTimeout(() => {
+    const cleanupTimer = setTimeout(() => {
       const existing = operations.get(operation.opId)
       if (existing && existing.finishedAt !== undefined) {
         operations.delete(operation.opId)
       }
     }, config.finishedOpTtlMs)
+    ;(cleanupTimer as { unref?: () => void }).unref?.()
   }
 
   async function executeOperation(
@@ -549,18 +550,15 @@ export function createServer(config: DaemonConfig, executor?: CommandExecutor): 
       ws.close(1001, "server shutdown")
     }
 
-    let stopTimedOut = false
-    await Promise.race([
-      (server as ServerLike).stop(false),
-      new Promise<void>((resolve) => {
-        setTimeout(() => {
-          stopTimedOut = true
-          resolve()
-        }, 1000)
-      }),
-    ])
-
-    void stopTimedOut
+    const stopResult = (server as ServerLike).stop(true)
+    if (stopResult && typeof (stopResult as Promise<void>).then === "function") {
+      void Promise.resolve(stopResult).catch((error) => {
+        log("warn", "server_stop_error", {
+          endpoint,
+          message: error instanceof Error ? error.message : String(error),
+        })
+      })
+    }
 
     if (config.transport === "unix" && existsSync(config.unixSocketPath)) {
       const stat = lstatSync(config.unixSocketPath)

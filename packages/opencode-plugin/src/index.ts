@@ -371,20 +371,26 @@ async function buildWskrResolvedSpec(options: {
 
 async function startSandboxAgentWithRetry(
   start: () => Promise<SandboxAgent>,
+  options: {
+    maxAttempts?: number
+    retryDelayMs?: number
+  } = {},
 ): Promise<SandboxAgent> {
+  const maxAttempts = Math.max(1, options.maxAttempts ?? SANDBOX_START_MAX_ATTEMPTS)
+  const retryDelayMs = Math.max(1, options.retryDelayMs ?? SANDBOX_START_RETRY_DELAY_MS)
   let attempt = 0
   let lastError: unknown
 
-  while (attempt < SANDBOX_START_MAX_ATTEMPTS) {
+  while (attempt < maxAttempts) {
     attempt += 1
     try {
       return await start()
     } catch (error) {
       lastError = error
-      if (attempt >= SANDBOX_START_MAX_ATTEMPTS) {
+      if (attempt >= maxAttempts) {
         break
       }
-      await new Promise((resolve) => setTimeout(resolve, SANDBOX_START_RETRY_DELAY_MS * attempt))
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs * attempt))
     }
   }
 
