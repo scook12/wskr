@@ -12,39 +12,28 @@ explore = "research"
 
 [command_policies.strict_readonly]
 default_action = "deny"
-rules = [
-  { id = "git_status", match = "git status*", action = "allow" },
-  { id = "git_diff", match = "git diff*", action = "allow" },
-  { id = "list_files", match = "ls*", action = "allow" },
-]
+allow = ["git status*", "git diff*", "ls*"]
 
 [command_policies.research_safe]
 default_action = "deny"
-rules = [
-  { id = "git_status", match = "git status*", action = "allow" },
-  { id = "git_diff", match = "git diff*", action = "allow" },
-  { id = "curl_url", match = "curl *", action = "allow" },
-]
+allow = ["git status*", "git diff*", "curl *"]
 
 [command_policies.build_standard]
 default_action = "deny"
-rules = [
-  { id = "git_status", match = "git status*", action = "allow" },
-  { id = "git_diff", match = "git diff*", action = "allow" },
-  { id = "npm_install", match = "npm install*", action = "allow" },
-  { id = "npm_test", match = "npm test*", action = "allow" },
-  { id = "npm_run", match = "npm run *", action = "allow" },
-  { id = "bun_install", match = "bun install*", action = "allow" },
-  { id = "bun_test", match = "bun test*", action = "allow" },
-  { id = "dangerous_rm_root", match = "rm -rf /*", action = "never" },
+allow = [
+  "git status*",
+  "git diff*",
+  "npm install*",
+  "npm test*",
+  "npm run*",
+  "bun install*",
+  "bun test*",
 ]
+never = ["rm -rf /*"]
 
 [command_policies.release_guarded]
 default_action = "ask"
-rules = [
-  { id = "git_status", match = "git status*", action = "allow" },
-  { id = "git_diff", match = "git diff*", action = "allow" },
-]
+allow = ["git status*", "git diff*"]
 
 [profiles.strict]
 command_policy = "strict_readonly"

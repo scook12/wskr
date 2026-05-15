@@ -430,6 +430,81 @@ command_policy = "strict"
     }
   })
 
+  it("supports compact policy syntax for allow/ask/deny/never arrays", async () => {
+    const tempDir = await Bun.$`mktemp -d`.text()
+    const policyFile = `${tempDir.trim()}/wskr.toml`
+    await Bun.write(
+      policyFile,
+      `version = 1
+
+[agents.primary]
+"*" = "strict"
+
+[agents.subagent]
+"*" = "strict"
+
+[command_policies.strict_readonly]
+default_action = "deny"
+allow = ["git status*", "git diff*"]
+ask = ["npm publish*"]
+never = ["rm -rf /*"]
+
+[profiles.strict]
+command_policy = "strict_readonly"
+
+[profiles.strict.runtime]
+image = "alpine:3.20"
+workdir = "/workspace"
+cpus = 1
+memory_mib = 1024
+dns = "1.1.1.1"
+sandbox_agent_command = "sandbox-agent"
+sandbox_agent_args = ["server"]
+
+[[profiles.strict.runtime.mounts]]
+host = "{repoRoot}"
+guest = "/workspace"
+mode = "rw"
+
+[profiles.strict.network]
+mode = "deny"
+allow_hosts = []
+
+[profiles.strict.secrets]
+mode = "dummy"
+allowlist = []
+dummy_prefix = "DUMMY"
+
+[profiles.strict.secrets.aliases]
+
+[profiles.strict.auth]
+stub_env = {}
+`,
+    )
+
+    const previous = process.env.OPENCODE_SBX_POLICY_FILE
+    process.env.OPENCODE_SBX_POLICY_FILE = policyFile
+
+    try {
+      const policy = await loadRuntimePolicy()
+      const rules = policy.command_policies.strict_readonly.rules
+      expect(rules.length).toBe(4)
+      expect(rules.some((rule) => rule.match === "git status*" && rule.action === "allow")).toBe(
+        true,
+      )
+      expect(rules.some((rule) => rule.match === "npm publish*" && rule.action === "ask")).toBe(
+        true,
+      )
+      expect(rules.some((rule) => rule.match === "rm -rf /*" && rule.action === "never")).toBe(true)
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OPENCODE_SBX_POLICY_FILE
+      } else {
+        process.env.OPENCODE_SBX_POLICY_FILE = previous
+      }
+    }
+  })
+
   it("loads valid single-file wskr policy", async () => {
     const policyFile = "/Users/sam10266/byox/runtime/wskr/packages/types/src/wskr.toml"
     const previous = process.env.OPENCODE_SBX_POLICY_FILE

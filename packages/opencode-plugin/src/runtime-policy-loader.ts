@@ -15,6 +15,152 @@ async function ensureReadableFile(path: string): Promise<void> {
   await access(path, constants.R_OK)
 }
 
+type RawPolicyRecord = Record<string, unknown>
+
+type CompactRuleAction = "allow" | "ask" | "deny" | "never"
+
+type NormalizedRule = {
+  id: string
+  match: string
+  action: CompactRuleAction
+}
+
+function isObjectRecord(value: unknown): value is RawPolicyRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function toRuleId(base: string, index: number, usedIds: Set<string>): string {
+  const seed = `${base}_${index + 1}`
+  if (!usedIds.has(seed)) {
+    usedIds.add(seed)
+    return seed
+  }
+
+  let suffix = 2
+  while (usedIds.has(`${seed}_${suffix}`)) {
+    suffix += 1
+  }
+
+  const id = `${seed}_${suffix}`
+  usedIds.add(id)
+  return id
+}
+
+function normalizeCompactRuleEntry(
+  value: unknown,
+  action: CompactRuleAction,
+  index: number,
+  usedIds: Set<string>,
+): NormalizedRule {
+  if (typeof value === "string") {
+    return {
+      id: toRuleId(action, index, usedIds),
+      match: value,
+      action,
+    }
+  }
+
+  if (isObjectRecord(value) && typeof value.match === "string") {
+    const explicitId = typeof value.id === "string" ? value.id : undefined
+    const id = explicitId ? toRuleId(explicitId, index, usedIds) : toRuleId(action, index, usedIds)
+    return {
+      id,
+      match: value.match,
+      action,
+    }
+  }
+
+  throw new Error(`Invalid compact '${action}' rule entry at index ${index}`)
+}
+
+function normalizeExplicitRuleEntry(
+  value: unknown,
+  index: number,
+  usedIds: Set<string>,
+): NormalizedRule {
+  if (
+    isObjectRecord(value) &&
+    typeof value.match === "string" &&
+    typeof value.action === "string" &&
+    ["allow", "ask", "deny", "never"].includes(value.action)
+  ) {
+    const explicitId = typeof value.id === "string" ? value.id : undefined
+    const id = explicitId ? toRuleId(explicitId, index, usedIds) : toRuleId("rule", index, usedIds)
+    return {
+      id,
+      match: value.match,
+      action: value.action as CompactRuleAction,
+    }
+  }
+
+  throw new Error(`Invalid command policy rule entry at index ${index}`)
+}
+
+function normalizeCommandPolicy(policyName: string, rawPolicy: unknown): RawPolicyRecord {
+  if (!isObjectRecord(rawPolicy)) {
+    throw new Error(`command_policies.${policyName} must be an object`)
+  }
+
+  const usedIds = new Set<string>()
+  const normalizedRules: NormalizedRule[] = []
+
+  const explicitRules = rawPolicy.rules
+  if (explicitRules !== undefined) {
+    if (!Array.isArray(explicitRules)) {
+      throw new Error(`command_policies.${policyName}.rules must be an array`)
+    }
+    for (let i = 0; i < explicitRules.length; i += 1) {
+      normalizedRules.push(normalizeExplicitRuleEntry(explicitRules[i], i, usedIds))
+    }
+  }
+
+  const compactActionKeys: CompactRuleAction[] = ["allow", "ask", "deny", "never"]
+  for (const action of compactActionKeys) {
+    const compactRules = rawPolicy[action]
+    if (compactRules === undefined) {
+      continue
+    }
+
+    if (!Array.isArray(compactRules)) {
+      throw new Error(`command_policies.${policyName}.${action} must be an array`)
+    }
+
+    for (let i = 0; i < compactRules.length; i += 1) {
+      normalizedRules.push(normalizeCompactRuleEntry(compactRules[i], action, i, usedIds))
+    }
+  }
+
+  const defaultAction =
+    typeof rawPolicy.default_action === "string" ? rawPolicy.default_action : "deny"
+
+  return {
+    ...rawPolicy,
+    default_action: defaultAction,
+    rules: normalizedRules,
+  }
+}
+
+function normalizePolicy(rawPolicy: unknown): unknown {
+  if (!isObjectRecord(rawPolicy)) {
+    return rawPolicy
+  }
+
+  const commandPolicies = rawPolicy.command_policies
+  if (!isObjectRecord(commandPolicies)) {
+    return rawPolicy
+  }
+
+  const normalizedCommandPolicies: RawPolicyRecord = {}
+  for (const [policyName, value] of Object.entries(commandPolicies)) {
+    normalizedCommandPolicies[policyName] = normalizeCommandPolicy(policyName, value)
+  }
+
+  return {
+    ...rawPolicy,
+    command_policies: normalizedCommandPolicies,
+  }
+}
+
 export async function loadRuntimePolicy(): Promise<RuntimePolicy> {
   const policyFilePath = getPolicyFilePath()
 
@@ -34,7 +180,9 @@ export async function loadRuntimePolicy(): Promise<RuntimePolicy> {
     )
   }
 
-  const parsed = WskrPolicySchema.safeParse(parsedRaw)
+  const normalizedRaw = normalizePolicy(parsedRaw)
+
+  const parsed = WskrPolicySchema.safeParse(normalizedRaw)
   if (!parsed.success) {
     const issue = parsed.error.issues[0]
     const issuePath = issue?.path?.join(".") || "(root)"
