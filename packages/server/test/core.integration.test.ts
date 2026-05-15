@@ -98,6 +98,36 @@ async function waitForDone(
   throw new Error("timed out waiting for op.done")
 }
 
+async function waitForAccepted(
+  ws: WebSocket,
+  id: string,
+): Promise<{
+  id: string
+  ok: true
+  accepted: true
+  opId: string
+}> {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < 3000) {
+    const message = (await nextMessage(ws)) as {
+      id?: string
+      ok?: boolean
+      accepted?: boolean
+      opId?: string
+    }
+    if (message.id === id && message.ok === true && message.accepted === true && message.opId) {
+      return message as {
+        id: string
+        ok: true
+        accepted: true
+        opId: string
+      }
+    }
+  }
+
+  throw new Error(`timed out waiting for accepted ack for ${id}`)
+}
+
 describe("server integration (shim default)", () => {
   test("list request roundtrip", async () => {
     if (useReal) {
@@ -271,12 +301,7 @@ describe("server integration (shim default)", () => {
       try {
         const listId = crypto.randomUUID()
         wsA.send(JSON.stringify({ id: listId, kind: "list", payload: { debug: false } }))
-        const ackA = (await nextMessage(wsA)) as {
-          id: string
-          ok: boolean
-          accepted: true
-          opId: string
-        }
+        const ackA = await waitForAccepted(wsA, listId)
         expect(ackA.id).toBe(listId)
         expect(ackA.ok).toBe(true)
         expect(ackA.accepted).toBe(true)
@@ -456,6 +481,71 @@ describe("server integration (shim default)", () => {
       try {
         const res = await fetch(`http://127.0.0.1:${port}/nope`)
         expect(res.status).toBe(404)
+      } finally {
+        await started.runtime.stop()
+      }
+    } finally {
+      cleanupDir(dir)
+    }
+  })
+
+  test("returns executor_error details when command exits non-zero", async () => {
+    if (useReal) {
+      return
+    }
+
+    const dir = makeTempDir("wskr-integration-exit-nonzero-")
+    try {
+      const port = await getFreePort()
+      const runtime = createServer(
+        buildConfig(dir, port, join(dir, "unused-krun-binary")),
+        async ({ command }) => {
+          return {
+            argv: ["/fake/krunvm", command],
+            code: 7,
+            stdout: "",
+            stderr: "forced failure",
+            durationMs: 1,
+          }
+        },
+      )
+
+      const client = createKrunClient({ url: `ws://127.0.0.1:${port}/rpc`, ackTimeoutMs: 2000 })
+
+      try {
+        const done = await client.list(false)
+        expect(done.ok).toBe(false)
+        expect(done.state).toBe("failed")
+        expect(done.error?.code).toBe("executor_error")
+        expect(done.error?.message).toBe("krunvm list failed")
+        const details = done.error?.details as { code?: number; stderr?: string }
+        expect(details.code).toBe(7)
+        expect(details.stderr).toContain("forced failure")
+      } finally {
+        client.close()
+        await runtime.stop()
+      }
+    } finally {
+      cleanupDir(dir)
+    }
+  })
+
+  test("returns 400 when /rpc request is not websocket upgrade", async () => {
+    if (useReal) {
+      return
+    }
+
+    const dir = makeTempDir("wskr-integration-upgrade-fail-")
+    try {
+      const shimPath = createShimBinary(dir)
+      const port = await getFreePort()
+      const started = startServer({
+        config: buildConfig(dir, port, shimPath),
+      })
+
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/rpc`)
+        expect(res.status).toBe(400)
       } finally {
         await started.runtime.stop()
       }
