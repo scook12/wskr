@@ -2,11 +2,11 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "composite": true,
-    "emitDeclarationOnly": true,
     "declaration": true,
     "declarationMap": true,
+    "sourceMap": true,
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src"]
+  "include": ["src/index.ts", "src/protocol.ts", "src/runtime.ts"]
 }
