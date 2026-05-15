@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test"
 import type { DaemonConfig } from "../src/config"
-import { ProtocolError } from "../src/errors"
 import { argsForRequest } from "../src/args"
 
 const baseConfig: DaemonConfig = {
@@ -14,7 +13,6 @@ const baseConfig: DaemonConfig = {
   maxPayloadLength: 256 * 1024,
   idleTimeoutSec: 120,
   closeOnBackpressureLimit: true,
-  allowedWorkdirs: ["/tmp"],
   maxOutputBytes: 1024 * 1024,
   finishedOpTtlMs: 5000,
 }
@@ -57,27 +55,6 @@ describe("argsForRequest", () => {
       "8080:80/tcp",
       "ghcr.io/example/image",
     ])
-  })
-
-  test("rejects forbidden workdir", () => {
-    const request = {
-      id: "1",
-      kind: "create",
-      payload: {
-        image: "ghcr.io/example/image",
-        name: "vm1",
-        workdir: "/etc",
-        cpus: 2,
-        memoryMiB: 512,
-        dns: "1.1.1.1",
-        networkMode: "open",
-        networkAllowHosts: [],
-        volumes: [],
-        ports: [],
-      },
-    } as const
-
-    expect(() => argsForRequest(request, baseConfig)).toThrow(ProtocolError)
   })
 
   test("builds create args with network deny", () => {
@@ -270,18 +247,5 @@ describe("argsForRequest", () => {
         "vm-old",
       ],
     })
-  })
-
-  test("rejects forbidden changevm workdir", () => {
-    const request = {
-      id: "1",
-      kind: "changevm",
-      payload: {
-        name: "vm-old",
-        workdir: "/root",
-      },
-    } as const
-
-    expect(() => argsForRequest(request, baseConfig)).toThrow(ProtocolError)
   })
 })

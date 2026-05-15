@@ -50,7 +50,6 @@ If you change protocol or runtime policy schemas in `@wskr/types`, check all dow
 ### 2) Security defaults are fail-closed where possible
 
 - Startup preflight is hard-fail: missing/non-executable `krunvm` or invalid transport config exits non-zero.
-- Workdir checks are enforced for create/change operations via allowlisted roots (`KRUN_ALLOWED_WORKDIRS`).
 - Unix socket startup refuses to remove stale non-socket paths.
 
 ### 3) Protocol and policy contracts are schema-first

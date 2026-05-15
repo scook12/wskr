@@ -31,7 +31,6 @@ describe("server unix transport", () => {
         maxPayloadLength: 128 * 1024,
         idleTimeoutSec: 30,
         closeOnBackpressureLimit: true,
-        allowedWorkdirs: [dir],
         maxOutputBytes: 128 * 1024,
         finishedOpTtlMs: 1000,
       },
@@ -74,7 +73,6 @@ describe("server unix transport", () => {
             maxPayloadLength: 128 * 1024,
             idleTimeoutSec: 30,
             closeOnBackpressureLimit: true,
-            allowedWorkdirs: [dir],
             maxOutputBytes: 128 * 1024,
             finishedOpTtlMs: 1000,
           },
@@ -101,7 +99,6 @@ describe("server unix transport", () => {
         KRUN_SERVER_TRANSPORT: "unix",
         KRUN_SOCKET_PATH: socketPath,
         KRUN_BINARY_PATH: shimPath,
-        KRUN_ALLOWED_WORKDIRS: dir,
       })
       expect(() => createServer(config)).toThrow("refusing to remove non-socket path")
     } finally {
@@ -130,7 +127,6 @@ describe("server unix transport", () => {
         maxPayloadLength: 128 * 1024,
         idleTimeoutSec: 30,
         closeOnBackpressureLimit: true,
-        allowedWorkdirs: [dir],
         maxOutputBytes: 128 * 1024,
         finishedOpTtlMs: 1000,
       },

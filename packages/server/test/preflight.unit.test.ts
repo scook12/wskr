@@ -18,7 +18,6 @@ function makeConfig(overrides: Partial<DaemonConfig>): DaemonConfig {
     maxPayloadLength: 256 * 1024,
     idleTimeoutSec: 120,
     closeOnBackpressureLimit: true,
-    allowedWorkdirs: ["/tmp"],
     maxOutputBytes: 1024 * 1024,
     finishedOpTtlMs: 5000,
     ...overrides,

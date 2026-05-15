@@ -1,4 +1,3 @@
-import { resolve } from "node:path"
 import { ProtocolError } from "./errors"
 
 export type ServerTransport = "unix" | "tcp"
@@ -14,7 +13,6 @@ export type DaemonConfig = {
   maxPayloadLength: number
   idleTimeoutSec: number
   closeOnBackpressureLimit: boolean
-  allowedWorkdirs: string[]
   maxOutputBytes: number
   finishedOpTtlMs: number
 }
@@ -35,14 +33,6 @@ function parseBoolean(name: string, raw: string | undefined, defaultValue: boole
   if (raw === "1" || raw.toLowerCase() === "true") return true
   if (raw === "0" || raw.toLowerCase() === "false") return false
   throw new ProtocolError("invalid_config", `${name} must be one of: 1, 0, true, false`)
-}
-
-function parseCsv(raw: string | undefined, defaultValue: string[]): string[] {
-  if (raw === undefined || raw === "") return defaultValue
-  return raw
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0)
 }
 
 function parseTransport(raw: string | undefined): ServerTransport {
@@ -75,7 +65,6 @@ export function loadConfig(env: ConfigEnv = Bun.env): DaemonConfig {
       env.KRUN_WS_CLOSE_ON_BACKPRESSURE,
       true,
     ),
-    allowedWorkdirs: parseCsv(env.KRUN_ALLOWED_WORKDIRS, ["/tmp"]).map((path) => resolve(path)),
     maxOutputBytes: parsePositiveInt(
       "KRUN_MAX_OUTPUT_BYTES",
       env.KRUN_MAX_OUTPUT_BYTES,

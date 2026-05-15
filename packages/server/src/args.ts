@@ -9,14 +9,8 @@ import type {
   StartPayload,
 } from "@wskr/types"
 import type { DaemonConfig } from "./config"
-import { ProtocolError } from "./errors"
-import { isAllowedWorkdir } from "./security"
 
-function buildCreateArgs(payload: CreatePayload, config: DaemonConfig): string[] {
-  if (!isAllowedWorkdir(payload.workdir, config.allowedWorkdirs)) {
-    throw new ProtocolError("forbidden", "workdir is not allowed", { workdir: payload.workdir })
-  }
-
+function buildCreateArgs(payload: CreatePayload): string[] {
   const args = [
     "--name",
     payload.name,
@@ -77,7 +71,7 @@ function buildStartArgs(payload: StartPayload): string[] {
   return args
 }
 
-function buildChangeVmArgs(payload: ChangePayload, config: DaemonConfig): string[] {
+function buildChangeVmArgs(payload: ChangePayload): string[] {
   const args = [] as string[]
 
   if (payload.newName !== undefined) {
@@ -93,9 +87,6 @@ function buildChangeVmArgs(payload: ChangePayload, config: DaemonConfig): string
   }
 
   if (payload.workdir !== undefined) {
-    if (!isAllowedWorkdir(payload.workdir, config.allowedWorkdirs)) {
-      throw new ProtocolError("forbidden", "workdir is not allowed", { workdir: payload.workdir })
-    }
     args.push("--workdir", payload.workdir)
   }
 
@@ -125,13 +116,13 @@ function buildListArgs(payload: ListPayload): string[] {
 
 export function argsForRequest(
   request: ExecutableRequest,
-  config: DaemonConfig,
+  _config: DaemonConfig,
 ): { command: KrunCommand; args: string[] } {
   switch (request.kind) {
     case "get":
       return { command: "get", args: [] }
     case "create":
-      return { command: "create", args: buildCreateArgs(request.payload, config) }
+      return { command: "create", args: buildCreateArgs(request.payload) }
     case "delete":
       return { command: "delete", args: buildDeleteArgs(request.payload) }
     case "inspect":
@@ -139,7 +130,7 @@ export function argsForRequest(
     case "start":
       return { command: "start", args: buildStartArgs(request.payload) }
     case "changevm":
-      return { command: "changevm", args: buildChangeVmArgs(request.payload, config) }
+      return { command: "changevm", args: buildChangeVmArgs(request.payload) }
     case "list":
       return { command: "list", args: buildListArgs(request.payload) }
   }

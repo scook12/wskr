@@ -36,7 +36,6 @@ wskr-server
 - `KRUN_MAX_PAYLOAD_BYTES`: websocket payload limit
 - `KRUN_WS_IDLE_TIMEOUT_SEC`: websocket idle timeout
 - `KRUN_WS_CLOSE_ON_BACKPRESSURE`: websocket backpressure behavior (`true`/`false`)
-- `KRUN_ALLOWED_WORKDIRS`: comma-separated allowed workdir roots
 - `KRUN_MAX_OUTPUT_BYTES`: max command output size
 - `KRUN_FINISHED_OP_TTL_MS`: completed operation retention TTL
 
@@ -50,6 +49,11 @@ Preflight checks include:
 - Unix socket parent directory writability (Unix transport)
 - Socket path sanity (must be socket if already present)
 - TCP host/port configuration validity (TCP transport)
+
+## Workdir behavior
+
+- `create` and `changevm` forward `payload.workdir` directly to runtime command arguments.
+- Runtime policy and profile decisions belong to client/plugin layers; server remains a command bus for lifecycle operations.
 
 ## Development
 

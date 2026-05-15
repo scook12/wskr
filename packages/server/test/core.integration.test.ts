@@ -25,7 +25,6 @@ function buildConfig(
     maxPayloadLength: 128 * 1024,
     idleTimeoutSec: 30,
     closeOnBackpressureLimit: true,
-    allowedWorkdirs: [dir],
     maxOutputBytes: 128 * 1024,
     finishedOpTtlMs: 1000,
     ...overrides,

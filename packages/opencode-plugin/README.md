@@ -34,6 +34,12 @@ When provisioning through `@wskr/provider`, the plugin chooses the WSKR client U
    - `KRUN_SERVER_TRANSPORT=tcp` -> `ws://$KRUN_TCP_HOST:$KRUN_TCP_PORT/rpc`
    - `KRUN_SERVER_TRANSPORT=unix` (default) -> `ws+unix://$KRUN_SOCKET_PATH:/rpc`
 
+## Workdir Alignment
+
+- Profile runtime `workdir` values are sent to the WSKR server in `create` requests.
+- Server forwards `workdir` to the runtime command layer.
+- Runtime policy ownership stays in plugin/client configuration.
+
 ## Development
 
 ```bash
