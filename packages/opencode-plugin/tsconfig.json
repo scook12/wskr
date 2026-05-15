@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "declarationMap": true,
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "references": [
+    {
+      "path": "../agent-sandbox-provider"
+    },
+    {
+      "path": "../types"
+    }
+  ],
+  "include": ["src/index.ts", "src/runtime-policy-loader.ts"]
+}
