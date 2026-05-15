@@ -99,6 +99,18 @@ function makePolicy(): RuntimePolicy {
   }
 }
 
+function createToolContext(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    sessionID: "session-1",
+    messageID: "message-1",
+    agent: "build",
+    worktree: "/repo",
+    directory: "/repo",
+    ask: () => Effect.void,
+    ...overrides,
+  } as any
+}
+
 describe("plugin policy decision matrix", () => {
   it("handles allow, ask, deny default, and never", () => {
     const policy = makePolicy()
@@ -247,6 +259,28 @@ describe("plugin scope and mounts", () => {
 })
 
 describe("plugin pool and teardown", () => {
+  it("removes failed pending entry and retries creation", async () => {
+    const policy = makePolicy()
+    let createCount = 0
+
+    const deps = {
+      createClient: async () => {
+        createCount += 1
+        throw new Error("boot failed")
+      },
+    }
+
+    const context = createToolContext({ worktree: "/repo/fail", directory: "/repo/fail" })
+    await expect(internal.getSandboxClient("strict", policy, context, deps)).rejects.toThrow(
+      "boot failed",
+    )
+    await expect(internal.getSandboxClient("strict", policy, context, deps)).rejects.toThrow(
+      "boot failed",
+    )
+
+    expect(createCount).toBe(2)
+  })
+
   it("reuses cached sandbox client by deterministic key", async () => {
     const policy = makePolicy()
     let createCount = 0
@@ -401,6 +435,314 @@ describe("plugin secrets", () => {
       }
     }
   })
+
+  it("fails closed when broker approval rejects", async () => {
+    const policy = makePolicy()
+    policy.profiles.strict.secrets = {
+      mode: "brokered",
+      allowlist: ["OPENAI_API_KEY"],
+      aliases: {},
+      dummy_prefix: "DUMMY",
+    }
+
+    await expect(
+      internal.resolveProfileSecrets({
+        policy,
+        profileName: "strict",
+        profile: policy.profiles.strict,
+        context: {
+          ask: () => Effect.fail(new Error("user denied")),
+        } as any,
+      }),
+    ).rejects.toThrow("user denied")
+  })
+})
+
+describe("plugin execution backend", () => {
+  it("reconnects after stream error and succeeds", async () => {
+    const policy = makePolicy()
+    const context = createToolContext({ worktree: "/repo/reconnect", directory: "/repo/reconnect" })
+    const isolatedProfile = `strict-${Date.now()}-reconnect`
+    policy.profiles[isolatedProfile] = structuredClone(policy.profiles.strict)
+
+    const runCalls: string[] = []
+    let firstHandle = true
+
+    const poolDeps = {
+      createClient: async ({ key, profileName, profileHash }: any) => {
+        const client = {
+          runProcess: async (input: { cwd: string }) => {
+            runCalls.push(input.cwd)
+            if (firstHandle) {
+              firstHandle = false
+              throw new Error("stream error: connection dropped")
+            }
+
+            return {
+              stdout: "ok",
+              stderr: "",
+              exitCode: 0,
+              timedOut: false,
+              durationMs: 5,
+              stdoutTruncated: false,
+              stderrTruncated: false,
+            }
+          },
+          dispose: async () => {},
+          destroySandbox: async () => {},
+        } as any
+
+        return {
+          client,
+          key,
+          profile: profileName,
+          profileHash,
+          bootedAtMs: Date.now(),
+          teardown: "dispose" as const,
+        }
+      },
+    }
+
+    try {
+      const result = await internal.runCommandWithSandboxAgent({
+        command: "git status --short",
+        timeout: 10_000,
+        resolvedProfile: {
+          agentName: "build",
+          profile: isolatedProfile,
+          isSubAgent: false,
+          commandPolicyName: policy.profiles[isolatedProfile].command_policy,
+        },
+        policy,
+        context,
+        poolDeps,
+      })
+
+      expect(result.output).toContain("ok")
+      expect(runCalls.length).toBeGreaterThanOrEqual(2)
+    } finally {
+      // no shared test hooks/state reset required
+    }
+  })
+
+  it("falls back to alternate cwd when first cwd fails", async () => {
+    const policy = makePolicy()
+    const context = createToolContext({
+      worktree: "/repo/alt",
+      directory: "/repo/alt/subdir",
+    })
+    const isolatedProfile = `strict-${Date.now()}-altcwd`
+    policy.profiles[isolatedProfile] = structuredClone(policy.profiles.strict)
+
+    const attemptedCwds: string[] = []
+
+    const poolDeps = {
+      createClient: async ({ key, profileName, profileHash }: any) => {
+        const client = {
+          runProcess: async (input: { cwd: string }) => {
+            attemptedCwds.push(input.cwd)
+            if (input.cwd === "/workspace") {
+              throw new Error("cwd missing")
+            }
+
+            return {
+              stdout: "ok-alt",
+              stderr: "",
+              exitCode: 0,
+              timedOut: false,
+              durationMs: 7,
+              stdoutTruncated: false,
+              stderrTruncated: false,
+            }
+          },
+          dispose: async () => {},
+          destroySandbox: async () => {},
+        } as any
+
+        return {
+          client,
+          key,
+          profile: profileName,
+          profileHash,
+          bootedAtMs: Date.now(),
+          teardown: "dispose" as const,
+        }
+      },
+    }
+
+    try {
+      const result = await internal.runCommandWithSandboxAgent({
+        command: "git status --short",
+        timeout: 10_000,
+        resolvedProfile: {
+          agentName: "build",
+          profile: isolatedProfile,
+          isSubAgent: false,
+          commandPolicyName: policy.profiles[isolatedProfile].command_policy,
+        },
+        policy,
+        context,
+        poolDeps,
+      })
+
+      expect(result.output).toContain("ok-alt")
+      expect(attemptedCwds[0]).toBe("/workspace")
+      expect(attemptedCwds.includes("/repo/alt/subdir")).toBe(true)
+    } finally {
+      // no shared test hooks/state reset required
+    }
+  })
+
+  it("throws when no cwd candidate succeeds", async () => {
+    const policy = makePolicy()
+    const context = createToolContext({
+      worktree: "/repo/fail-all",
+      directory: "/repo/fail-all/subdir",
+    })
+    const isolatedProfile = `strict-${Date.now()}-allfail`
+    policy.profiles[isolatedProfile] = structuredClone(policy.profiles.strict)
+
+    const poolDeps = {
+      createClient: async ({ key, profileName, profileHash }: any) => {
+        const client = {
+          runProcess: async () => {
+            throw new Error("all cwd failed")
+          },
+          dispose: async () => {},
+          destroySandbox: async () => {},
+        } as any
+
+        return {
+          client,
+          key,
+          profile: profileName,
+          profileHash,
+          bootedAtMs: Date.now(),
+          teardown: "dispose" as const,
+        }
+      },
+    }
+
+    try {
+      await expect(
+        internal.runCommandWithSandboxAgent({
+          command: "git status --short",
+          timeout: 10_000,
+          resolvedProfile: {
+            agentName: "build",
+            profile: isolatedProfile,
+            isSubAgent: false,
+            commandPolicyName: policy.profiles[isolatedProfile].command_policy,
+          },
+          policy,
+          context,
+          poolDeps,
+        }),
+      ).rejects.toThrow("all cwd failed")
+    } finally {
+      // no shared test hooks/state reset required
+    }
+  })
+})
+
+describe("plugin execute behavior", () => {
+  it("denies command and emits denial message for never rule", async () => {
+    const policy = makePolicy()
+    const context = createToolContext()
+
+    await expect(
+      internal.executePolicyBashCommand({
+        args: { command: "rm -rf /*" },
+        context,
+        deps: {
+          loadPolicy: async () => policy,
+          backend: {
+            kind: "sandbox-agent",
+            run: async () => {
+              throw new Error("backend should not run on deny")
+            },
+          },
+        },
+      }),
+    ).rejects.toThrow("non-overridable runtime policy rule")
+  })
+
+  it("requests approval when decision is ask and executes backend", async () => {
+    const policy = makePolicy()
+    policy.agents.primary.release = "release"
+    const asked: unknown[] = []
+    const context = createToolContext({
+      agent: "release",
+      ask: (input: unknown) => {
+        asked.push(input)
+        return Effect.void
+      },
+    })
+
+    const result = await internal.executePolicyBashCommand({
+      args: { command: "npm publish" },
+      context,
+      deps: {
+        loadPolicy: async () => policy,
+        backend: {
+          kind: "sandbox-agent",
+          run: async () => ({
+            output: "ok",
+            metadata: { sandboxBootMs: 1 },
+            exitCode: 0,
+            sandboxId: "sandbox-1",
+            durationMs: 10,
+          }),
+        },
+      },
+    })
+
+    expect(asked.length).toBe(1)
+    expect(typeof result).toBe("object")
+    expect((result as any).output).toBe("ok")
+  })
+
+  it("records backend errors in execution path", async () => {
+    const policy = makePolicy()
+    const context = createToolContext()
+
+    await expect(
+      internal.executePolicyBashCommand({
+        args: { command: "git status --short" },
+        context,
+        deps: {
+          loadPolicy: async () => policy,
+          backend: {
+            kind: "sandbox-agent",
+            run: async () => {
+              throw new Error("backend exploded")
+            },
+          },
+        },
+      }),
+    ).rejects.toThrow("backend exploded")
+  })
+
+  it("rejects empty command before policy/backend execution", async () => {
+    const context = createToolContext()
+    await expect(
+      internal.executePolicyBashCommand({
+        args: { command: "    " },
+        context,
+        deps: {
+          loadPolicy: async () => {
+            throw new Error("should not load")
+          },
+          backend: {
+            kind: "sandbox-agent",
+            run: async () => {
+              throw new Error("should not run")
+            },
+          },
+        },
+      }),
+    ).rejects.toThrow("Command must not be empty")
+  })
 })
 
 describe("runtime policy loader", () => {
@@ -496,6 +838,136 @@ stub_env = {}
         true,
       )
       expect(rules.some((rule) => rule.match === "rm -rf /*" && rule.action === "never")).toBe(true)
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OPENCODE_SBX_POLICY_FILE
+      } else {
+        process.env.OPENCODE_SBX_POLICY_FILE = previous
+      }
+    }
+  })
+
+  it("fails closed for invalid compact rule entries", async () => {
+    const tempDir = await Bun.$`mktemp -d`.text()
+    const policyFile = `${tempDir.trim()}/wskr.toml`
+    await Bun.write(
+      policyFile,
+      `version = 1
+
+[agents.primary]
+"*" = "strict"
+
+[agents.subagent]
+"*" = "strict"
+
+[command_policies.strict_readonly]
+default_action = "deny"
+allow = [123]
+
+[profiles.strict]
+command_policy = "strict_readonly"
+
+[profiles.strict.runtime]
+image = "alpine:3.20"
+workdir = "/workspace"
+cpus = 1
+memory_mib = 1024
+dns = "1.1.1.1"
+sandbox_agent_command = "sandbox-agent"
+sandbox_agent_args = ["server"]
+
+[[profiles.strict.runtime.mounts]]
+host = "{repoRoot}"
+guest = "/workspace"
+mode = "rw"
+
+[profiles.strict.network]
+mode = "deny"
+allow_hosts = []
+
+[profiles.strict.secrets]
+mode = "dummy"
+allowlist = []
+dummy_prefix = "DUMMY"
+
+[profiles.strict.secrets.aliases]
+
+[profiles.strict.auth]
+stub_env = {}
+`,
+    )
+
+    const previous = process.env.OPENCODE_SBX_POLICY_FILE
+    process.env.OPENCODE_SBX_POLICY_FILE = policyFile
+
+    try {
+      await expect(loadRuntimePolicy()).rejects.toThrow("Invalid compact 'allow' rule entry")
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OPENCODE_SBX_POLICY_FILE
+      } else {
+        process.env.OPENCODE_SBX_POLICY_FILE = previous
+      }
+    }
+  })
+
+  it("fails closed when compact action field is not an array", async () => {
+    const tempDir = await Bun.$`mktemp -d`.text()
+    const policyFile = `${tempDir.trim()}/wskr.toml`
+    await Bun.write(
+      policyFile,
+      `version = 1
+
+[agents.primary]
+"*" = "strict"
+
+[agents.subagent]
+"*" = "strict"
+
+[command_policies.strict_readonly]
+default_action = "deny"
+allow = "git status*"
+
+[profiles.strict]
+command_policy = "strict_readonly"
+
+[profiles.strict.runtime]
+image = "alpine:3.20"
+workdir = "/workspace"
+cpus = 1
+memory_mib = 1024
+dns = "1.1.1.1"
+sandbox_agent_command = "sandbox-agent"
+sandbox_agent_args = ["server"]
+
+[[profiles.strict.runtime.mounts]]
+host = "{repoRoot}"
+guest = "/workspace"
+mode = "rw"
+
+[profiles.strict.network]
+mode = "deny"
+allow_hosts = []
+
+[profiles.strict.secrets]
+mode = "dummy"
+allowlist = []
+dummy_prefix = "DUMMY"
+
+[profiles.strict.secrets.aliases]
+
+[profiles.strict.auth]
+stub_env = {}
+`,
+    )
+
+    const previous = process.env.OPENCODE_SBX_POLICY_FILE
+    process.env.OPENCODE_SBX_POLICY_FILE = policyFile
+
+    try {
+      await expect(loadRuntimePolicy()).rejects.toThrow(
+        "command_policies.strict_readonly.allow must be an array",
+      )
     } finally {
       if (previous === undefined) {
         delete process.env.OPENCODE_SBX_POLICY_FILE

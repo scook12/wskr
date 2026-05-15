@@ -101,6 +101,11 @@ type ExecutionBackend = {
   }) => Promise<ExecutionResult>
 }
 
+type ExecuteDeps = {
+  loadPolicy: () => Promise<RuntimePolicy>
+  backend: ExecutionBackend
+}
+
 type AuditRecord = {
   timestamp: string
   session_id: string
@@ -913,6 +918,8 @@ export const internal = {
   resolveProfileSecrets,
   assertNetworkPolicyEnforceable,
   evaluateNetworkPolicy,
+  runCommandWithSandboxAgent,
+  executePolicyBashCommand,
 }
 
 export { loadRuntimePolicy } from "./runtime-policy-loader"
@@ -923,8 +930,9 @@ async function runCommandWithSandboxAgent(options: {
   resolvedProfile: ResolvedProfile
   policy: RuntimePolicy
   context: ToolContext
+  poolDeps?: SandboxPoolDeps
 }): Promise<ExecutionResult> {
-  const { command, timeout, resolvedProfile, policy, context } = options
+  const { command, timeout, resolvedProfile, policy, context, poolDeps } = options
   const profileConfig = policy.profiles[resolvedProfile.profile]
   if (!profileConfig) {
     throw new Error(`Profile '${resolvedProfile.profile}' is not configured.`)
@@ -948,7 +956,7 @@ async function runCommandWithSandboxAgent(options: {
     ...resolvedSecrets.env,
   }
 
-  let handle = await getSandboxClient(resolvedProfile.profile, policy, context)
+  let handle = await getSandboxClient(resolvedProfile.profile, policy, context, poolDeps)
 
   let lastError: unknown
   let result: {
@@ -977,7 +985,7 @@ async function runCommandWithSandboxAgent(options: {
       break
     } catch (error) {
       if (isStreamError(error)) {
-        handle = await reconnectSandboxClient(handle, policy, context)
+        handle = await reconnectSandboxClient(handle, policy, context, poolDeps)
         try {
           result = await handle.client.runProcess({
             command: "sh",
@@ -1045,6 +1053,105 @@ const sandboxAgentBackend: ExecutionBackend = {
   run: runCommandWithSandboxAgent,
 }
 
+const defaultExecuteDeps: ExecuteDeps = {
+  loadPolicy: loadRuntimePolicy,
+  backend: sandboxAgentBackend,
+}
+
+async function executePolicyBashCommand(options: {
+  args: { command: string; timeout?: number }
+  context: ToolContext
+  deps?: ExecuteDeps
+}): Promise<ToolResult> {
+  const { args, context, deps = defaultExecuteDeps } = options
+  const backend = deps.backend
+  const command = normalizeCommand(args.command)
+  if (!command) {
+    throw new Error("Command must not be empty.")
+  }
+  const timeoutMs = getTimeoutMs(args.timeout)
+
+  const policy = await deps.loadPolicy()
+  const resolvedProfile = resolveAgentProfile(context.agent, policy)
+  const decision = evaluateCommandPolicy(command, resolvedProfile.commandPolicyName, policy)
+
+  if (decision.action === "deny") {
+    const message =
+      decision.reason === "never"
+        ? `Command denied by non-overridable runtime policy rule '${decision.ruleId}'.`
+        : `Command denied by runtime policy rule '${decision.ruleId}'.`
+    await appendAuditRecord(
+      policy,
+      buildAuditRecord({
+        context,
+        resolvedProfile,
+        command,
+        decision: "deny",
+        decisionReason: message,
+      }),
+    )
+    throw new Error(message)
+  }
+
+  if (decision.action === "ask") {
+    await Effect.runPromise(
+      context.ask({
+        permission: "bash",
+        patterns: [command],
+        always: [command],
+        metadata: {
+          policyRule: decision.ruleId,
+          profile: resolvedProfile.profile,
+          commandPolicy: resolvedProfile.commandPolicyName,
+          backend: backend.kind,
+        },
+      }),
+    )
+  }
+
+  try {
+    const execution = await backend.run({
+      command,
+      timeout: timeoutMs,
+      resolvedProfile,
+      policy,
+      context,
+    })
+
+    await appendAuditRecord(
+      policy,
+      buildAuditRecord({
+        context,
+        resolvedProfile,
+        command,
+        decision: decision.action,
+        decisionReason: decision.ruleId,
+        vmId: execution.sandboxId,
+        vmBootedAtMs: execution.metadata.sandboxBootMs as number,
+        exitCode: execution.exitCode,
+        durationMs: execution.durationMs,
+      }),
+    )
+
+    return {
+      output: execution.output,
+      metadata: execution.metadata,
+    }
+  } catch (error) {
+    await appendAuditRecord(
+      policy,
+      buildAuditRecord({
+        context,
+        resolvedProfile,
+        command,
+        decision: decision.action,
+        decisionReason: error instanceof Error ? error.message : String(error),
+      }),
+    )
+    throw error
+  }
+}
+
 const opencodeBashTool: ToolDefinition = tool({
   description: "Runtime-policy bash wrapper using Sandbox Agent process API",
   args: {
@@ -1055,92 +1162,7 @@ const opencodeBashTool: ToolDefinition = tool({
     args: { command: string; timeout?: number },
     context: ToolContext,
   ): Promise<ToolResult> {
-    const backend = sandboxAgentBackend
-    const command = normalizeCommand(args.command)
-    if (!command) {
-      throw new Error("Command must not be empty.")
-    }
-    const timeoutMs = getTimeoutMs(args.timeout)
-
-    const policy = await loadRuntimePolicy()
-    const resolvedProfile = resolveAgentProfile(context.agent, policy)
-    const decision = evaluateCommandPolicy(command, resolvedProfile.commandPolicyName, policy)
-
-    if (decision.action === "deny") {
-      const message =
-        decision.reason === "never"
-          ? `Command denied by non-overridable runtime policy rule '${decision.ruleId}'.`
-          : `Command denied by runtime policy rule '${decision.ruleId}'.`
-      await appendAuditRecord(
-        policy,
-        buildAuditRecord({
-          context,
-          resolvedProfile,
-          command,
-          decision: "deny",
-          decisionReason: message,
-        }),
-      )
-      throw new Error(message)
-    }
-
-    if (decision.action === "ask") {
-      await Effect.runPromise(
-        context.ask({
-          permission: "bash",
-          patterns: [command],
-          always: [command],
-          metadata: {
-            policyRule: decision.ruleId,
-            profile: resolvedProfile.profile,
-            commandPolicy: resolvedProfile.commandPolicyName,
-            backend: backend.kind,
-          },
-        }),
-      )
-    }
-
-    try {
-      const execution = await backend.run({
-        command,
-        timeout: timeoutMs,
-        resolvedProfile,
-        policy,
-        context,
-      })
-
-      await appendAuditRecord(
-        policy,
-        buildAuditRecord({
-          context,
-          resolvedProfile,
-          command,
-          decision: decision.action,
-          decisionReason: decision.ruleId,
-          vmId: execution.sandboxId,
-          vmBootedAtMs: execution.metadata.sandboxBootMs as number,
-          exitCode: execution.exitCode,
-          durationMs: execution.durationMs,
-        }),
-      )
-
-      return {
-        output: execution.output,
-        metadata: execution.metadata,
-      }
-    } catch (error) {
-      await appendAuditRecord(
-        policy,
-        buildAuditRecord({
-          context,
-          resolvedProfile,
-          command,
-          decision: decision.action,
-          decisionReason: error instanceof Error ? error.message : String(error),
-        }),
-      )
-      throw error
-    }
+    return executePolicyBashCommand({ args, context })
   },
 })
 
