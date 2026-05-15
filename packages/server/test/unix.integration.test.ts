@@ -117,12 +117,13 @@ describe("server unix transport", () => {
     const dir = makeTempDir("wskr-default-client-endpoint-")
     const shimPath = createShimBinary(dir)
 
+    const port = await getFreePort()
     const started = startServer({
       config: {
         transport: "tcp",
         unixSocketPath: `${dir}/unused.sock`,
         tcpHost: "127.0.0.1",
-        tcpPort: 8877,
+        tcpPort: port,
         krunPath: shimPath,
         defaultTimeoutMs: 1000,
         maxConcurrentOps: 1,
@@ -135,7 +136,7 @@ describe("server unix transport", () => {
       },
     })
 
-    const client = createKrunClient()
+    const client = createKrunClient({ url: `ws://127.0.0.1:${port}/rpc` })
     try {
       const done = await client.list(true)
       expect(done.ok).toBe(true)
