@@ -182,7 +182,21 @@ describe("plugin scope and mounts", () => {
   })
 
   it("denies non-open network mode when runtime cannot enforce it", () => {
-    const denyProfile = {
+    const allowlistWithoutHosts = {
+      ...makePolicy().profiles.strict,
+      network: {
+        mode: "allowlist",
+        allow_hosts: [],
+      },
+    }
+
+    expect(() => internal.assertNetworkPolicyEnforceable(allowlistWithoutHosts as any)).toThrow(
+      "must not be empty",
+    )
+  })
+
+  it("denies network command when network mode is deny", () => {
+    const profile = {
       ...makePolicy().profiles.strict,
       network: {
         mode: "deny",
@@ -190,9 +204,30 @@ describe("plugin scope and mounts", () => {
       },
     }
 
-    expect(() => internal.assertNetworkPolicyEnforceable(denyProfile as any)).toThrow(
-      "not yet enforceable",
+    expect(() => internal.evaluateNetworkPolicy("curl https://github.com", profile as any)).toThrow(
+      "Network access denied",
     )
+  })
+
+  it("allows allowlist network command only for permitted hosts", () => {
+    const profile = {
+      ...makePolicy().profiles.strict,
+      network: {
+        mode: "allowlist",
+        allow_hosts: ["github.com", "*.githubusercontent.com"],
+      },
+    }
+
+    expect(internal.evaluateNetworkPolicy("curl https://github.com", profile as any)).toMatchObject(
+      {
+        mode: "allowlist",
+        usesNetwork: true,
+      },
+    )
+
+    expect(() =>
+      internal.evaluateNetworkPolicy("curl https://registry.npmjs.org", profile as any),
+    ).toThrow("not allowed")
   })
 })
 

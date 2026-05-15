@@ -71,6 +71,25 @@ type ResolvedSecrets = {
   brokered: string[]
 }
 
+type ResolvedNetworkDecision = {
+  mode: WskrProfile["network"]["mode"]
+  usesNetwork: boolean
+  hosts: string[]
+}
+
+const NETWORK_COMMAND_NAMES = new Set([
+  "curl",
+  "wget",
+  "ping",
+  "nc",
+  "ncat",
+  "telnet",
+  "ssh",
+  "scp",
+  "sftp",
+  "ftp",
+])
+
 type ExecutionBackend = {
   kind: "sandbox-agent"
   run: (options: {
@@ -307,18 +326,85 @@ async function resolveProfileSecrets(options: {
 }
 
 function assertNetworkPolicyEnforceable(profile: WskrProfile): void {
+  if (profile.network.mode === "allowlist" && profile.network.allow_hosts.length === 0) {
+    throw new Error("network.allow_hosts must not be empty when network.mode is 'allowlist'")
+  }
+}
+
+function parseCommandTokens(command: string): string[] {
+  return command
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0)
+}
+
+function extractLikelyHosts(command: string): string[] {
+  const hosts = new Set<string>()
+  const urlRegex = /https?:\/\/([^\s/:?#]+)(?::\d+)?(?:[/?#]|$)/gi
+  let match: RegExpExecArray | null = urlRegex.exec(command)
+  while (match) {
+    if (match[1]) {
+      hosts.add(match[1].toLowerCase())
+    }
+    match = urlRegex.exec(command)
+  }
+
+  const hostPortRegex = /\b([a-zA-Z0-9.-]+):(\d{1,5})\b/g
+  match = hostPortRegex.exec(command)
+  while (match) {
+    if (match[1]) {
+      hosts.add(match[1].toLowerCase())
+    }
+    match = hostPortRegex.exec(command)
+  }
+
+  return Array.from(hosts)
+}
+
+function hostMatchesAllowPattern(host: string, pattern: string): boolean {
+  const regex = patternToRegExp(pattern.toLowerCase())
+  return regex.test(host.toLowerCase())
+}
+
+function evaluateNetworkPolicy(command: string, profile: WskrProfile): ResolvedNetworkDecision {
+  const tokens = parseCommandTokens(command)
+  const commandName = tokens[0]?.toLowerCase() ?? ""
+  const hosts = extractLikelyHosts(command)
+  const usesNetwork = NETWORK_COMMAND_NAMES.has(commandName) || hosts.length > 0
+
   if (profile.network.mode === "open") {
-    return
+    return {
+      mode: "open",
+      usesNetwork,
+      hosts,
+    }
+  }
+
+  if (!usesNetwork) {
+    return {
+      mode: profile.network.mode,
+      usesNetwork,
+      hosts,
+    }
   }
 
   if (profile.network.mode === "deny") {
-    throw new Error("Network mode 'deny' is not yet enforceable by runtime; refusing execution")
+    throw new Error("Network access denied by runtime policy (network.mode=deny)")
   }
 
-  if (profile.network.mode === "allowlist") {
-    throw new Error(
-      "Network mode 'allowlist' is not yet enforceable by runtime; refusing execution",
+  for (const host of hosts) {
+    const allowed = profile.network.allow_hosts.some((pattern) =>
+      hostMatchesAllowPattern(host, pattern),
     )
+    if (!allowed) {
+      throw new Error(`Network host '${host}' is not allowed by runtime policy`)
+    }
+  }
+
+  return {
+    mode: "allowlist",
+    usesNetwork,
+    hosts,
   }
 }
 
@@ -824,6 +910,7 @@ export const internal = {
   sanitizeVmName,
   resolveProfileSecrets,
   assertNetworkPolicyEnforceable,
+  evaluateNetworkPolicy,
 }
 
 export { loadRuntimePolicy } from "./runtime-policy-loader"
@@ -842,6 +929,7 @@ async function runCommandWithSandboxAgent(options: {
   }
 
   assertNetworkPolicyEnforceable(profileConfig)
+  const networkDecision = evaluateNetworkPolicy(command, profileConfig)
   const resolvedSecrets = await resolveProfileSecrets({
     policy,
     profileName: resolvedProfile.profile,
@@ -916,8 +1004,16 @@ async function runCommandWithSandboxAgent(options: {
       : new Error(`Sandbox execution failed for command '${command}'.`)
   }
 
+  const output = applyRedaction(formatProcessOutput(result), {
+    ...policy,
+    redaction: {
+      ...policy.redaction,
+      rules: [...policy.redaction.rules, ...resolvedSecrets.redactions],
+    },
+  })
+
   return {
-    output: formatProcessOutput(result),
+    output,
     metadata: {
       backend: "sandbox-agent",
       sandboxClientKey: handle.key,
@@ -930,6 +1026,11 @@ async function runCommandWithSandboxAgent(options: {
       durationMs: result.durationMs,
       stdoutTruncated: result.stdoutTruncated,
       stderrTruncated: result.stderrTruncated,
+      secretsMode: profileConfig.secrets.mode,
+      brokeredSecrets: resolvedSecrets.brokered,
+      networkMode: networkDecision.mode,
+      networkUses: networkDecision.usesNetwork,
+      networkHosts: networkDecision.hosts,
     },
     exitCode: result.exitCode ?? null,
     sandboxId: handle.key,
@@ -1005,23 +1106,6 @@ const opencodeBashTool: ToolDefinition = tool({
         policy,
         context,
       })
-      const profileConfig = policy.profiles[resolvedProfile.profile]
-      if (!profileConfig) {
-        throw new Error(`Profile '${resolvedProfile.profile}' is not configured.`)
-      }
-      const resolvedSecrets = await resolveProfileSecrets({
-        policy,
-        profileName: resolvedProfile.profile,
-        profile: profileConfig,
-        context,
-      })
-      const output = applyRedaction(execution.output, {
-        ...policy,
-        redaction: {
-          ...policy.redaction,
-          rules: [...policy.redaction.rules, ...resolvedSecrets.redactions],
-        },
-      })
 
       await appendAuditRecord(
         policy,
@@ -1039,13 +1123,8 @@ const opencodeBashTool: ToolDefinition = tool({
       )
 
       return {
-        output,
-        metadata: {
-          ...execution.metadata,
-          secretsMode: profileConfig.secrets.mode,
-          brokeredSecrets: resolvedSecrets.brokered,
-          networkMode: profileConfig.network.mode,
-        },
+        output: execution.output,
+        metadata: execution.metadata,
       }
     } catch (error) {
       await appendAuditRecord(
