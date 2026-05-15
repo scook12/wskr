@@ -1,0 +1,140 @@
+version = 1
+
+[profiles.strict]
+command_policy = "strict_readonly"
+
+[profiles.strict.smol]
+smolfile = "smolfiles/strict.smol"
+image = "alpine:3.20"
+init = []
+
+[profiles.strict.filesystem]
+workdir = "/workspace"
+
+[[profiles.strict.filesystem.mounts]]
+host = "{repoRoot}"
+guest = "/workspace"
+mode = "rw"
+
+[profiles.strict.network]
+mode = "allowlist"
+allow_hosts = []
+allow_cidrs = []
+deny_private_ranges = true
+
+[profiles.strict.auth]
+mode = "none"
+
+[profiles.strict.auth.stub_env]
+
+
+[profiles.research]
+command_policy = "research_safe"
+
+[profiles.research.smol]
+smolfile = "smolfiles/research.smol"
+image = "alpine:3.20"
+init = []
+
+[profiles.research.filesystem]
+workdir = "/workspace"
+
+[[profiles.research.filesystem.mounts]]
+host = "{repoRoot}"
+guest = "/workspace"
+mode = "rw"
+
+[profiles.research.network]
+mode = "allowlist"
+allow_hosts = ["docs.*", "github.com", "raw.githubusercontent.com"]
+allow_cidrs = []
+deny_private_ranges = true
+
+[profiles.research.auth]
+mode = "none"
+
+[profiles.research.auth.stub_env]
+
+
+[profiles.build]
+command_policy = "build_standard"
+
+[profiles.build.smol]
+smolfile = "smolfiles/build.smol"
+image = "alpine:3.20"
+init = ["apk add --no-cache git nodejs npm"]
+
+[profiles.build.filesystem]
+workdir = "/workspace"
+
+[[profiles.build.filesystem.mounts]]
+host = "{repoRoot}"
+guest = "/workspace"
+mode = "rw"
+
+[profiles.build.network]
+mode = "allowlist"
+allow_hosts = ["registry.npmjs.org", "github.com", "raw.githubusercontent.com"]
+allow_cidrs = []
+deny_private_ranges = true
+
+[profiles.build.auth]
+mode = "none"
+
+[profiles.build.auth.stub_env]
+
+
+[profiles.verify]
+command_policy = "verify_standard"
+
+[profiles.verify.smol]
+smolfile = "smolfiles/verify.smol"
+image = "alpine:3.20"
+init = ["apk add --no-cache git nodejs npm"]
+
+[profiles.verify.filesystem]
+workdir = "/workspace"
+
+[[profiles.verify.filesystem.mounts]]
+host = "{repoRoot}"
+guest = "/workspace"
+mode = "rw"
+
+[profiles.verify.network]
+mode = "allowlist"
+allow_hosts = ["registry.npmjs.org", "github.com", "raw.githubusercontent.com"]
+allow_cidrs = []
+deny_private_ranges = true
+
+[profiles.verify.auth]
+mode = "none"
+
+[profiles.verify.auth.stub_env]
+
+
+[profiles.release]
+command_policy = "release_guarded"
+
+[profiles.release.smol]
+smolfile = "smolfiles/release.smol"
+image = "alpine:3.20"
+init = ["apk add --no-cache git nodejs npm"]
+
+[profiles.release.filesystem]
+workdir = "/workspace"
+
+[[profiles.release.filesystem.mounts]]
+host = "{repoRoot}"
+guest = "/workspace"
+mode = "rw"
+
+[profiles.release.network]
+mode = "allowlist"
+allow_hosts = ["github.com", "api.github.com", "registry.npmjs.org"]
+allow_cidrs = []
+deny_private_ranges = true
+
+[profiles.release.auth]
+mode = "none"
+
+[profiles.release.auth.stub_env]

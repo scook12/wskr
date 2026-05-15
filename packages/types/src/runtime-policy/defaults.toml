@@ -1,0 +1,13 @@
+version = 1
+
+[defaults]
+require_sandbox_for_bash = true
+fail_closed = true
+unknown_agent_profile = "strict"
+unknown_subagent_profile = "strict"
+subagent_inherits_parent_profile = false
+profile_resolution_order = [
+  "explicit_subagent_map",
+  "explicit_primary_agent_map",
+  "strict_default",
+]
