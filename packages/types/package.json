@@ -22,7 +22,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "bun --watch src/index.ts",
-    "test": "bun test",
+    "test": "echo 'no types tests'",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "engines": {
