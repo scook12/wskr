@@ -1,0 +1,18 @@
+telemetry = false
+env = false
+
+[test]
+coverage = true
+coverageSkipTestFiles = true
+
+[install]
+minimumReleaseAge = 259200
+minimumReleaseAgeExcludes = [
+  "workspace*",
+  "@wskr/types",
+  "@wskr/server",
+  "@wskr/client",
+  "@wskr/agent-sandbox-provider",
+  "@wskr/opencode-plugin",
+]
+

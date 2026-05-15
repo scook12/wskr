@@ -1,0 +1,31 @@
+{
+  "name": "wskr",
+  "private": true,
+  "packageManager": "bun@1.2.16",
+  "workspaces": [
+    "packages/server",
+    "packages/types",
+    "packages/client",
+    "packages/agent-sandbox-provider",
+    "packages/opencode-plugin"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "dev": "bun run --workspaces dev",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "test": "bun run --workspaces test",
+    "typecheck": "tsc -b tsconfig.json"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.15",
+    "@types/bun": "latest",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  }
+}

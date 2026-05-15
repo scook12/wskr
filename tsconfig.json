@@ -1,0 +1,20 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/types"
+    },
+    {
+      "path": "./packages/server"
+    },
+    {
+      "path": "./packages/client"
+    },
+    {
+      "path": "./packages/agent-sandbox-provider"
+    },
+    {
+      "path": "./packages/opencode-plugin"
+    }
+  ]
+}
