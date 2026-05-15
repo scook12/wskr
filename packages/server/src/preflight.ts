@@ -1,4 +1,4 @@
-import { accessSync, constants, existsSync, lstatSync, mkdirSync } from "node:fs"
+import { accessSync, constants, existsSync, lstatSync, mkdirSync, statSync } from "node:fs"
 import { dirname } from "node:path"
 import type { DaemonConfig } from "./config"
 import { ProtocolError } from "./errors"
@@ -40,14 +40,8 @@ export function runPreflight(config: DaemonConfig): {
   } else {
     resolvedKrunPath = resolved
 
-    if (!existsSync(resolvedKrunPath)) {
-      checks.push({
-        name: "krun_binary",
-        ok: false,
-        message: `krun binary path does not exist: ${resolvedKrunPath}`,
-      })
-    } else {
-      const stat = lstatSync(resolvedKrunPath)
+    try {
+      const stat = statSync(resolvedKrunPath)
       if (!stat.isFile()) {
         checks.push({
           name: "krun_binary",
@@ -70,6 +64,12 @@ export function runPreflight(config: DaemonConfig): {
           })
         }
       }
+    } catch {
+      checks.push({
+        name: "krun_binary",
+        ok: false,
+        message: `krun binary path does not exist: ${resolvedKrunPath}`,
+      })
     }
   }
 

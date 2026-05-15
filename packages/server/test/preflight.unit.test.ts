@@ -248,7 +248,7 @@ describe("preflight", () => {
     }
   })
 
-  test("fails when krun path is symlink (not regular file by lstat)", () => {
+  test("passes when krun path is symlink to executable", () => {
     const dir = makeTempDir("wskr-preflight-symlink-")
     try {
       const shim = createShimBinary(dir)
@@ -262,10 +262,10 @@ describe("preflight", () => {
         }),
       )
 
-      expect(result.report.ok).toBe(false)
+      expect(result.report.ok).toBe(true)
       const krunCheck = result.report.checks.find((check) => check.name === "krun_binary")
-      expect(krunCheck?.ok).toBe(false)
-      expect(krunCheck?.message).toContain("not a file")
+      expect(krunCheck?.ok).toBe(true)
+      expect(krunCheck?.message).toContain("is executable")
     } finally {
       cleanupDir(dir)
     }
