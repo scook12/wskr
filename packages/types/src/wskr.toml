@@ -12,95 +12,39 @@ explore = "research"
 
 [command_policies.strict_readonly]
 default_action = "deny"
-
-[[command_policies.strict_readonly.rules]]
-id = "git_status"
-match = "git status*"
-action = "allow"
-
-[[command_policies.strict_readonly.rules]]
-id = "git_diff"
-match = "git diff*"
-action = "allow"
-
-[[command_policies.strict_readonly.rules]]
-id = "list_files"
-match = "ls*"
-action = "allow"
+rules = [
+  { id = "git_status", match = "git status*", action = "allow" },
+  { id = "git_diff", match = "git diff*", action = "allow" },
+  { id = "list_files", match = "ls*", action = "allow" },
+]
 
 [command_policies.research_safe]
 default_action = "deny"
-
-[[command_policies.research_safe.rules]]
-id = "git_status"
-match = "git status*"
-action = "allow"
-
-[[command_policies.research_safe.rules]]
-id = "git_diff"
-match = "git diff*"
-action = "allow"
-
-[[command_policies.research_safe.rules]]
-id = "curl_url"
-match = "curl *"
-action = "allow"
+rules = [
+  { id = "git_status", match = "git status*", action = "allow" },
+  { id = "git_diff", match = "git diff*", action = "allow" },
+  { id = "curl_url", match = "curl *", action = "allow" },
+]
 
 [command_policies.build_standard]
 default_action = "deny"
-
-[[command_policies.build_standard.rules]]
-id = "git_status"
-match = "git status*"
-action = "allow"
-
-[[command_policies.build_standard.rules]]
-id = "git_diff"
-match = "git diff*"
-action = "allow"
-
-[[command_policies.build_standard.rules]]
-id = "npm_install"
-match = "npm install*"
-action = "allow"
-
-[[command_policies.build_standard.rules]]
-id = "npm_test"
-match = "npm test*"
-action = "allow"
-
-[[command_policies.build_standard.rules]]
-id = "npm_run"
-match = "npm run *"
-action = "allow"
-
-[[command_policies.build_standard.rules]]
-id = "bun_install"
-match = "bun install*"
-action = "allow"
-
-[[command_policies.build_standard.rules]]
-id = "bun_test"
-match = "bun test*"
-action = "allow"
-
-[[command_policies.build_standard.rules]]
-id = "dangerous_rm_root"
-match = "rm -rf /*"
-action = "never"
+rules = [
+  { id = "git_status", match = "git status*", action = "allow" },
+  { id = "git_diff", match = "git diff*", action = "allow" },
+  { id = "npm_install", match = "npm install*", action = "allow" },
+  { id = "npm_test", match = "npm test*", action = "allow" },
+  { id = "npm_run", match = "npm run *", action = "allow" },
+  { id = "bun_install", match = "bun install*", action = "allow" },
+  { id = "bun_test", match = "bun test*", action = "allow" },
+  { id = "dangerous_rm_root", match = "rm -rf /*", action = "never" },
+]
 
 [command_policies.release_guarded]
 default_action = "ask"
-
-[[command_policies.release_guarded.rules]]
-id = "git_status"
-match = "git status*"
-action = "allow"
-
-[[command_policies.release_guarded.rules]]
-id = "git_diff"
-match = "git diff*"
-action = "allow"
+rules = [
+  { id = "git_status", match = "git status*", action = "allow" },
+  { id = "git_diff", match = "git diff*", action = "allow" },
+]
 
 [profiles.strict]
 command_policy = "strict_readonly"
@@ -131,8 +75,7 @@ dummy_prefix = "DUMMY"
 [profiles.strict.secrets.aliases]
 
 [profiles.strict.auth]
-
-[profiles.strict.auth.stub_env]
+stub_env = {}
 
 [profiles.research]
 command_policy = "research_safe"
@@ -163,8 +106,7 @@ dummy_prefix = "DUMMY"
 [profiles.research.secrets.aliases]
 
 [profiles.research.auth]
-
-[profiles.research.auth.stub_env]
+stub_env = {}
 
 [profiles.build]
 command_policy = "build_standard"
@@ -195,8 +137,7 @@ dummy_prefix = "DUMMY"
 [profiles.build.secrets.aliases]
 
 [profiles.build.auth]
-
-[profiles.build.auth.stub_env]
+stub_env = {}
 
 [profiles.release]
 command_policy = "release_guarded"
@@ -227,8 +168,7 @@ dummy_prefix = "DUMMY"
 [profiles.release.secrets.aliases]
 
 [profiles.release.auth]
-
-[profiles.release.auth.stub_env]
+stub_env = {}
 
 [audit]
 enabled = true
@@ -252,11 +192,7 @@ include = [
 [redaction]
 enabled = true
 fail_mode = "block"
-
-[[redaction.rules]]
-id = "api_key"
-pattern = "(sk-[A-Za-z0-9]{16,})"
-replacement = "[REDACTED]"
+rules = [{ id = "api_key", pattern = "(sk-[A-Za-z0-9]{16,})", replacement = "[REDACTED]" }]
 
 [pool]
 enabled = true
