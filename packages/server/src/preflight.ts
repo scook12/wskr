@@ -1,5 +1,4 @@
-import { constants } from "node:fs"
-import { accessSync, existsSync, lstatSync, mkdirSync } from "node:fs"
+import { accessSync, constants, existsSync, lstatSync, mkdirSync } from "node:fs"
 import { dirname } from "node:path"
 import type { DaemonConfig } from "./config"
 import { ProtocolError } from "./errors"

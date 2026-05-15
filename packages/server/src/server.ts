@@ -83,7 +83,11 @@ async function runCommandDefault(
   const startedAt = performance.now()
 
   const timeoutController = new AbortController()
-  const timeout = setTimeout(() => timeoutController.abort(), timeoutMs)
+  let timedOut = false
+  const timeout = setTimeout(() => {
+    timedOut = true
+    timeoutController.abort()
+  }, timeoutMs)
   const onAbort = () => timeoutController.abort()
   signal.addEventListener("abort", onAbort, { once: true })
 
@@ -99,6 +103,11 @@ async function runCommandDefault(
     const stderrPromise = child.stderr ? new Response(child.stderr).text() : Promise.resolve("")
 
     const [stdout, stderr, code] = await Promise.all([stdoutPromise, stderrPromise, child.exited])
+
+    if (timedOut && code !== 0 && !signal.aborted) {
+      throw new ProtocolError("timeout", `command exceeded timeout (${timeoutMs}ms)`)
+    }
+
     return {
       argv,
       code,

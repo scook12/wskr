@@ -33,4 +33,9 @@ describe("loadConfig", () => {
   test("rejects invalid transport", () => {
     expect(() => loadConfig({ KRUN_SERVER_TRANSPORT: "http" })).toThrow(ProtocolError)
   })
+
+  test("parses allowed workdirs csv", () => {
+    const config = loadConfig({ KRUN_ALLOWED_WORKDIRS: " /tmp , /var/tmp ,," })
+    expect(config.allowedWorkdirs).toEqual(["/tmp", "/var/tmp"])
+  })
 })
