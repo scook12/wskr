@@ -1,0 +1,266 @@
+version = 1
+
+[agents.primary]
+"*" = "strict"
+build = "build"
+plan = "strict"
+
+[agents.subagent]
+"*" = "strict"
+general = "build"
+explore = "research"
+
+[command_policies.strict_readonly]
+default_action = "deny"
+
+[[command_policies.strict_readonly.rules]]
+id = "git_status"
+match = "git status*"
+action = "allow"
+
+[[command_policies.strict_readonly.rules]]
+id = "git_diff"
+match = "git diff*"
+action = "allow"
+
+[[command_policies.strict_readonly.rules]]
+id = "list_files"
+match = "ls*"
+action = "allow"
+
+[command_policies.research_safe]
+default_action = "deny"
+
+[[command_policies.research_safe.rules]]
+id = "git_status"
+match = "git status*"
+action = "allow"
+
+[[command_policies.research_safe.rules]]
+id = "git_diff"
+match = "git diff*"
+action = "allow"
+
+[[command_policies.research_safe.rules]]
+id = "curl_url"
+match = "curl *"
+action = "allow"
+
+[command_policies.build_standard]
+default_action = "deny"
+
+[[command_policies.build_standard.rules]]
+id = "git_status"
+match = "git status*"
+action = "allow"
+
+[[command_policies.build_standard.rules]]
+id = "git_diff"
+match = "git diff*"
+action = "allow"
+
+[[command_policies.build_standard.rules]]
+id = "npm_install"
+match = "npm install*"
+action = "allow"
+
+[[command_policies.build_standard.rules]]
+id = "npm_test"
+match = "npm test*"
+action = "allow"
+
+[[command_policies.build_standard.rules]]
+id = "npm_run"
+match = "npm run *"
+action = "allow"
+
+[[command_policies.build_standard.rules]]
+id = "bun_install"
+match = "bun install*"
+action = "allow"
+
+[[command_policies.build_standard.rules]]
+id = "bun_test"
+match = "bun test*"
+action = "allow"
+
+[[command_policies.build_standard.rules]]
+id = "dangerous_rm_root"
+match = "rm -rf /*"
+action = "never"
+
+[command_policies.release_guarded]
+default_action = "ask"
+
+[[command_policies.release_guarded.rules]]
+id = "git_status"
+match = "git status*"
+action = "allow"
+
+[[command_policies.release_guarded.rules]]
+id = "git_diff"
+match = "git diff*"
+action = "allow"
+
+[profiles.strict]
+command_policy = "strict_readonly"
+
+[profiles.strict.runtime]
+image = "alpine:3.20"
+workdir = "/workspace"
+cpus = 1
+memory_mib = 1024
+dns = "1.1.1.1"
+sandbox_agent_command = "sandbox-agent"
+sandbox_agent_args = ["server"]
+
+[[profiles.strict.runtime.mounts]]
+host = "{repoRoot}"
+guest = "/workspace"
+mode = "rw"
+
+[profiles.strict.network]
+mode = "open"
+allow_hosts = []
+
+[profiles.strict.secrets]
+mode = "dummy"
+allowlist = []
+dummy_prefix = "DUMMY"
+
+[profiles.strict.secrets.aliases]
+
+[profiles.strict.auth]
+
+[profiles.strict.auth.stub_env]
+
+[profiles.research]
+command_policy = "research_safe"
+
+[profiles.research.runtime]
+image = "alpine:3.20"
+workdir = "/workspace"
+cpus = 1
+memory_mib = 1024
+dns = "1.1.1.1"
+sandbox_agent_command = "sandbox-agent"
+sandbox_agent_args = ["server"]
+
+[[profiles.research.runtime.mounts]]
+host = "{repoRoot}"
+guest = "/workspace"
+mode = "rw"
+
+[profiles.research.network]
+mode = "open"
+allow_hosts = []
+
+[profiles.research.secrets]
+mode = "dummy"
+allowlist = []
+dummy_prefix = "DUMMY"
+
+[profiles.research.secrets.aliases]
+
+[profiles.research.auth]
+
+[profiles.research.auth.stub_env]
+
+[profiles.build]
+command_policy = "build_standard"
+
+[profiles.build.runtime]
+image = "alpine:3.20"
+workdir = "/workspace"
+cpus = 1
+memory_mib = 1024
+dns = "1.1.1.1"
+sandbox_agent_command = "sandbox-agent"
+sandbox_agent_args = ["server"]
+
+[[profiles.build.runtime.mounts]]
+host = "{repoRoot}"
+guest = "/workspace"
+mode = "rw"
+
+[profiles.build.network]
+mode = "open"
+allow_hosts = []
+
+[profiles.build.secrets]
+mode = "dummy"
+allowlist = []
+dummy_prefix = "DUMMY"
+
+[profiles.build.secrets.aliases]
+
+[profiles.build.auth]
+
+[profiles.build.auth.stub_env]
+
+[profiles.release]
+command_policy = "release_guarded"
+
+[profiles.release.runtime]
+image = "alpine:3.20"
+workdir = "/workspace"
+cpus = 1
+memory_mib = 1024
+dns = "1.1.1.1"
+sandbox_agent_command = "sandbox-agent"
+sandbox_agent_args = ["server"]
+
+[[profiles.release.runtime.mounts]]
+host = "{repoRoot}"
+guest = "/workspace"
+mode = "rw"
+
+[profiles.release.network]
+mode = "open"
+allow_hosts = []
+
+[profiles.release.secrets]
+mode = "dummy"
+allowlist = []
+dummy_prefix = "DUMMY"
+
+[profiles.release.secrets.aliases]
+
+[profiles.release.auth]
+
+[profiles.release.auth.stub_env]
+
+[audit]
+enabled = true
+path = "{stateDir}/wskr-audit.ndjson"
+include = [
+  "timestamp",
+  "session_id",
+  "message_id",
+  "agent_name",
+  "is_subagent",
+  "resolved_profile",
+  "normalized_command",
+  "decision",
+  "decision_reason",
+  "vm_id",
+  "vm_booted_at_ms",
+  "exit_code",
+  "duration_ms",
+]
+
+[redaction]
+enabled = true
+fail_mode = "block"
+
+[[redaction.rules]]
+id = "api_key"
+pattern = "(sk-[A-Za-z0-9]{16,})"
+replacement = "[REDACTED]"
+
+[pool]
+enabled = true
+max_total_vms = 6
+per_profile_max_idle = 2
+idle_ttl_seconds = 1200
+startup_timeout_seconds = 45
