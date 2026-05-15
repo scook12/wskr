@@ -70,16 +70,28 @@ export const PortMappingSchema = z
 
 export const GetPayloadSchema = z.null()
 
-export const CreatePayloadSchema = z.object({
-  image: z.string().min(1).max(512),
-  name: VmNameSchema,
-  workdir: z.string().min(1).max(1024),
-  cpus: z.number().int().min(1).max(64),
-  dns: z.string().min(1).max(256),
-  volumes: z.array(z.string().min(1).max(2048)).max(64),
-  ports: z.array(PortMappingSchema).max(64),
-  memoryMiB: z.number().int().min(64).max(262144),
-})
+export const CreatePayloadSchema = z
+  .object({
+    image: z.string().min(1).max(512),
+    name: VmNameSchema,
+    workdir: z.string().min(1).max(1024),
+    cpus: z.number().int().min(1).max(64),
+    dns: z.string().min(1).max(256),
+    networkMode: z.enum(["open", "deny", "allowlist"]),
+    networkAllowHosts: z.array(z.string().min(1).max(512)).max(256),
+    volumes: z.array(z.string().min(1).max(2048)).max(64),
+    ports: z.array(PortMappingSchema).max(64),
+    memoryMiB: z.number().int().min(64).max(262144),
+  })
+  .superRefine((value, ctx) => {
+    if (value.networkMode === "allowlist" && value.networkAllowHosts.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "networkAllowHosts must not be empty when networkMode is 'allowlist'",
+        path: ["networkAllowHosts"],
+      })
+    }
+  })
 
 export const ChangePayloadSchema = z
   .object({

@@ -30,6 +30,17 @@ function buildCreateArgs(payload: CreatePayload, config: DaemonConfig): string[]
     payload.dns,
   ]
 
+  if (payload.networkMode === "deny") {
+    args.push("--network", "none")
+  }
+
+  if (payload.networkMode === "allowlist") {
+    args.push("--network", "allowlist")
+    for (const host of payload.networkAllowHosts) {
+      args.push("--allow-host", host)
+    }
+  }
+
   for (const volume of payload.volumes) {
     args.push("--volume", volume)
   }

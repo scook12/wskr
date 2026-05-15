@@ -120,7 +120,7 @@ guest = "/workspace"
 mode = "rw"
 
 [profiles.strict.network]
-mode = "open"
+mode = "deny"
 allow_hosts = []
 
 [profiles.strict.secrets]
@@ -152,8 +152,8 @@ guest = "/workspace"
 mode = "rw"
 
 [profiles.research.network]
-mode = "open"
-allow_hosts = []
+mode = "allowlist"
+allow_hosts = ["github.com", "api.openai.com"]
 
 [profiles.research.secrets]
 mode = "dummy"
@@ -184,8 +184,8 @@ guest = "/workspace"
 mode = "rw"
 
 [profiles.build.network]
-mode = "open"
-allow_hosts = []
+mode = "allowlist"
+allow_hosts = ["github.com", "api.openai.com"]
 
 [profiles.build.secrets]
 mode = "dummy"
@@ -216,8 +216,8 @@ guest = "/workspace"
 mode = "rw"
 
 [profiles.release.network]
-mode = "open"
-allow_hosts = []
+mode = "allowlist"
+allow_hosts = ["github.com", "api.openai.com"]
 
 [profiles.release.secrets]
 mode = "dummy"

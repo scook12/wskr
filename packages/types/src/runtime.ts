@@ -140,10 +140,8 @@ export const WskrPoolSchema = z.object({
 export const WskrPolicySchema = z.object({
   version: z.number().int().positive().default(1),
   agents: z.object({
-    primary: z.record(WskrAgentProfileNameSchema, WskrProfileNameSchema).default({ "*": "strict" }),
-    subagent: z
-      .record(WskrAgentProfileNameSchema, WskrProfileNameSchema)
-      .default({ "*": "strict" }),
+    primary: z.record(z.string().min(1).max(64), WskrProfileNameSchema).default({ "*": "strict" }),
+    subagent: z.record(z.string().min(1).max(64), WskrProfileNameSchema).default({ "*": "strict" }),
   }),
   command_policies: z.record(z.string().min(1).max(128), WskrCommandPolicySchema),
   profiles: z.record(WskrProfileNameSchema, WskrProfileSchema),

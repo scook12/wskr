@@ -44,8 +44,8 @@ function makePolicy(): RuntimePolicy {
           sandbox_agent_args: ["server"],
         },
         network: {
-          mode: "open",
-          allow_hosts: [],
+          mode: "allowlist",
+          allow_hosts: ["github.com", "api.openai.com", "registry.npmjs.org"],
         },
         secrets: {
           mode: "dummy",
@@ -70,8 +70,8 @@ function makePolicy(): RuntimePolicy {
           sandbox_agent_args: ["server"],
         },
         network: {
-          mode: "open",
-          allow_hosts: [],
+          mode: "allowlist",
+          allow_hosts: ["github.com"],
         },
         secrets: {
           mode: "dummy",
@@ -181,7 +181,7 @@ describe("plugin scope and mounts", () => {
     expect(resolved).toEqual(["/Users/test/repo:/workspace:rw"])
   })
 
-  it("denies non-open network mode when runtime cannot enforce it", () => {
+  it("rejects allowlist mode with empty hosts", () => {
     const allowlistWithoutHosts = {
       ...makePolicy().profiles.strict,
       network: {
@@ -228,6 +228,21 @@ describe("plugin scope and mounts", () => {
     expect(() =>
       internal.evaluateNetworkPolicy("curl https://registry.npmjs.org", profile as any),
     ).toThrow("not allowed")
+  })
+
+  it("does not block non-network command under deny mode", () => {
+    const profile = {
+      ...makePolicy().profiles.strict,
+      network: {
+        mode: "deny",
+        allow_hosts: [],
+      },
+    }
+
+    expect(internal.evaluateNetworkPolicy("git status --short", profile as any)).toMatchObject({
+      mode: "deny",
+      usesNetwork: false,
+    })
   })
 })
 
@@ -406,6 +421,25 @@ command_policy = "strict"
 
     try {
       await expect(loadRuntimePolicy()).rejects.toThrow("Runtime policy validation failed")
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OPENCODE_SBX_POLICY_FILE
+      } else {
+        process.env.OPENCODE_SBX_POLICY_FILE = previous
+      }
+    }
+  })
+
+  it("loads valid single-file wskr policy", async () => {
+    const policyFile = "/Users/sam10266/byox/runtime/wskr/packages/types/src/wskr.toml"
+    const previous = process.env.OPENCODE_SBX_POLICY_FILE
+    process.env.OPENCODE_SBX_POLICY_FILE = policyFile
+
+    try {
+      const policy = await loadRuntimePolicy()
+      expect(policy.version).toBe(1)
+      expect(policy.profiles.strict.command_policy).toBeTruthy()
+      expect(Object.keys(policy.command_policies).length).toBeGreaterThan(0)
     } finally {
       if (previous === undefined) {
         delete process.env.OPENCODE_SBX_POLICY_FILE

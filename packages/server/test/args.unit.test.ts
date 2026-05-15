@@ -31,6 +31,8 @@ describe("argsForRequest", () => {
         cpus: 2,
         memoryMiB: 512,
         dns: "1.1.1.1",
+        networkMode: "open",
+        networkAllowHosts: [],
         volumes: ["/tmp:/work"],
         ports: ["8080:80/tcp"],
       },
@@ -68,12 +70,65 @@ describe("argsForRequest", () => {
         cpus: 2,
         memoryMiB: 512,
         dns: "1.1.1.1",
+        networkMode: "open",
+        networkAllowHosts: [],
         volumes: [],
         ports: [],
       },
     } as const
 
     expect(() => argsForRequest(request, baseConfig)).toThrow(ProtocolError)
+  })
+
+  test("builds create args with network deny", () => {
+    const request = {
+      id: "1",
+      kind: "create",
+      payload: {
+        image: "ghcr.io/example/image",
+        name: "vm1",
+        workdir: "/tmp/work",
+        cpus: 2,
+        memoryMiB: 512,
+        dns: "1.1.1.1",
+        networkMode: "deny",
+        networkAllowHosts: [],
+        volumes: [],
+        ports: [],
+      },
+    } as const
+
+    const result = argsForRequest(request, baseConfig)
+    expect(result.command).toBe("create")
+    expect(result.args).toContain("--network")
+    expect(result.args).toContain("none")
+  })
+
+  test("builds create args with network allowlist", () => {
+    const request = {
+      id: "1",
+      kind: "create",
+      payload: {
+        image: "ghcr.io/example/image",
+        name: "vm1",
+        workdir: "/tmp/work",
+        cpus: 2,
+        memoryMiB: 512,
+        dns: "1.1.1.1",
+        networkMode: "allowlist",
+        networkAllowHosts: ["api.github.com", "*.githubusercontent.com"],
+        volumes: [],
+        ports: [],
+      },
+    } as const
+
+    const result = argsForRequest(request, baseConfig)
+    expect(result.command).toBe("create")
+    expect(result.args).toContain("--network")
+    expect(result.args).toContain("allowlist")
+    expect(result.args).toContain("--allow-host")
+    expect(result.args).toContain("api.github.com")
+    expect(result.args).toContain("*.githubusercontent.com")
   })
 
   test("builds get args", () => {
