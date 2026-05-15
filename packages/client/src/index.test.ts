@@ -1,11 +1,12 @@
 import { describe, expect, it } from "bun:test"
-import { KrunClient, KrunClientError } from "./index"
+import { createKrunClient, KrunClient, KrunClientError, rpcErrorToMessage } from "./index"
 
 type EventType = "open" | "message" | "error" | "close"
 type Listener = (event: any) => void
+type SocketState = WebSocket['CONNECTING'] | WebSocket['CLOSED'] | WebSocket['OPEN']
 
 class FakeWebSocket {
-  readyState = WebSocket.CONNECTING
+  readyState: SocketState = WebSocket.CONNECTING
   sent: string[] = []
 
   private listeners: Record<EventType, Set<Listener>> = {
@@ -45,6 +46,10 @@ class FakeWebSocket {
   serverClose(code = 1006, reason = "abrupt close"): void {
     this.readyState = WebSocket.CLOSED
     this.emit("close", { code, reason, wasClean: false })
+  }
+
+  serverError(): void {
+    this.emit("error", {})
   }
 
   private emit(type: EventType, event: any): void {
@@ -90,6 +95,24 @@ function buildDone(id: string, opId: string) {
     id,
     opId,
     kind: "list",
+    state: "succeeded",
+    ts: new Date().toISOString(),
+    ok: true,
+    result: {
+      code: 0,
+      stdout: "ok",
+      stderr: "",
+      durationMs: 1,
+    },
+  }
+}
+
+function buildDoneForKind(id: string, opId: string, kind: string) {
+  return {
+    event: "op.done",
+    id,
+    opId,
+    kind,
     state: "succeeded",
     ts: new Date().toISOString(),
     ok: true,
@@ -198,6 +221,139 @@ describe("KrunClient unit", () => {
     ws.serverClose(1006, "closed early")
 
     await expect(connecting).rejects.toMatchObject({ code: "connection_closed" })
+  })
+
+  it("rejects connect when websocket emits transport error before open", async () => {
+    let socket: FakeWebSocket | null = null
+    const client = new KrunClient({
+      websocketFactory: () => {
+        socket = new FakeWebSocket()
+        return socket as unknown as WebSocket
+      },
+    })
+
+    const connecting = client.connect()
+    const ws = await waitForSocket(() => socket)
+    ws.serverError()
+
+    await expect(connecting).rejects.toMatchObject({ code: "transport_error" })
+  })
+
+  it("convenience methods emit expected request kind and payload", async () => {
+    const cases: Array<{
+      kind: string
+      payload: unknown
+      call: (client: KrunClient) => Promise<unknown>
+    }> = [
+      {
+        kind: "get",
+        payload: null,
+        call: (client) => client.get(),
+      },
+      {
+        kind: "create",
+        payload: {
+          image: "alpine:latest",
+          name: "vm-test",
+          workdir: "/tmp",
+          cpus: 1,
+          dns: "1.1.1.1",
+          volumes: [],
+          ports: [],
+          memoryMiB: 512,
+        },
+        call: (client) =>
+          client.create({
+            image: "alpine:latest",
+            name: "vm-test",
+            workdir: "/tmp",
+            cpus: 1,
+            dns: "1.1.1.1",
+            volumes: [],
+            ports: [],
+            memoryMiB: 512,
+          }),
+      },
+      {
+        kind: "delete",
+        payload: { name: "vm-test" },
+        call: (client) => client.delete({ name: "vm-test" }),
+      },
+      {
+        kind: "start",
+        payload: {
+          name: "vm-test",
+          cpus: 1,
+          memoryMiB: 512,
+          args: [],
+          env: [],
+        },
+        call: (client) =>
+          client.start({
+            name: "vm-test",
+            cpus: 1,
+            memoryMiB: 512,
+            args: [],
+            env: [],
+          }),
+      },
+      {
+        kind: "inspect",
+        payload: { name: "vm-test" },
+        call: (client) => client.inspect({ name: "vm-test" }),
+      },
+      {
+        kind: "changevm",
+        payload: { name: "vm-test" },
+        call: (client) => client.changevm({ name: "vm-test" }),
+      },
+      {
+        kind: "list",
+        payload: { debug: true },
+        call: (client) => client.list(true),
+      },
+    ]
+
+    for (const testCase of cases) {
+      let socket: FakeWebSocket | null = null
+      const client = new KrunClient({
+        websocketFactory: () => {
+          socket = new FakeWebSocket()
+          return socket as unknown as WebSocket
+        },
+      })
+
+      const promise = testCase.call(client)
+      const ws = await waitForSocket(() => socket)
+      ws.open()
+      await waitFor(() => ws.sent.length > 0)
+
+      const outbound = JSON.parse(ws.sent[0] ?? "{}")
+      expect(outbound.kind).toBe(testCase.kind)
+      expect(outbound.payload).toEqual(testCase.payload)
+
+      const opId = crypto.randomUUID()
+      ws.serverMessage(buildQueuedAck(outbound.id, opId))
+      ws.serverMessage(buildDoneForKind(outbound.id, opId, testCase.kind))
+
+      const done = await promise
+      expect(done).toBeTruthy()
+      client.close()
+    }
+  })
+
+  it("factory and error message helper work as expected", () => {
+    let socket: FakeWebSocket | null = null
+    const client = createKrunClient({
+      websocketFactory: () => {
+        socket = new FakeWebSocket()
+        return socket as unknown as WebSocket
+      },
+    })
+
+    expect(client).toBeInstanceOf(KrunClient)
+    expect(rpcErrorToMessage(new Error("boom"))).toBe("boom")
+    expect(rpcErrorToMessage("unknown")).toBe("unknown rpc error")
   })
 
   it("emits op.update events to registered listeners", async () => {
