@@ -1,6 +1,6 @@
 {
   "name": "@wskr/provider",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": false,
   "type": "module",
   "main": "./dist/index.js",
@@ -28,8 +28,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@wskr/client": "^0.1.1",
-    "@wskr/types": "^0.1.1",
+    "@wskr/client": "^0.1.2",
+    "@wskr/types": "^0.1.2",
     "sandbox-agent": "0.4.2",
     "zod": "^4.4.3"
   }
