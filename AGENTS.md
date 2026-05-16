@@ -101,7 +101,7 @@ Notes:
 - Test runner is Bun (`bun test`).
 - Coverage is enabled globally in `bunfig.toml`.
 - Server integration tests use a Bun-based `krunvm` shim by default.
-- Real krunvm integration path is opt-in via `WSKR_USE_REAL_KRUNVM=1`.
+- Real krunvm integration path is opt-in via `WSKR_USE_REAL_KRUNVM=1` and runs dedicated real tests (`test/real.integration.test.ts`).
 
 When changing server protocol/lifecycle behavior, run at least:
 

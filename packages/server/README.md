@@ -55,6 +55,12 @@ Preflight checks include:
 - `create` and `changevm` forward `payload.workdir` directly to runtime command arguments.
 - Runtime policy and profile decisions belong to client/plugin layers; server remains a command bus for lifecycle operations.
 
+## Backend argument contract
+
+- Server request payloads are validated strictly against protocol schemas.
+- Unsupported extra fields are rejected at protocol parse time with `invalid_message`.
+- Server only emits krunvm-documented CLI flags for each command.
+
 ## Development
 
 ```bash
@@ -65,6 +71,12 @@ Integration tests run with a `krunvm` shim by default. Real `krunvm` smoke tests
 
 ```bash
 bun run --filter @wskr/server test:integration:real
+```
+
+Real integration tests require TCP transport and a fixed test port:
+
+```bash
+WSKR_USE_REAL_KRUNVM=1 KRUN_SERVER_TRANSPORT=tcp KRUN_TCP_PORT=8877 bun run --filter @wskr/server test:integration:real
 ```
 
 ## Publishing

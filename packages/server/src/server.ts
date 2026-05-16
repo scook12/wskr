@@ -5,7 +5,7 @@ import type {
   AckCancelled,
   ExecutableRequest,
   JobState,
-  KrunCommand,
+  KrunvmBackendCommand,
   OpDone,
   OpUpdate,
   RequestAccepted,
@@ -48,7 +48,7 @@ type ServerLike = {
 }
 
 export type CommandExecutor = (params: {
-  command: KrunCommand
+  command: KrunvmBackendCommand
   args: string[]
   timeoutMs: number
   signal: AbortSignal
@@ -74,7 +74,7 @@ function cleanupSocketPath(socketPath: string): void {
 
 async function runCommandDefault(
   config: DaemonConfig,
-  command: KrunCommand,
+  command: KrunvmBackendCommand,
   args: string[],
   timeoutMs: number,
   signal: AbortSignal,

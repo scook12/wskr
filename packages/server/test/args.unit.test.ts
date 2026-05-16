@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { safeParseKrunvmInvocation } from "@wskr/types"
 import type { DaemonConfig } from "../src/config"
 import { argsForRequest } from "../src/args"
 
@@ -29,8 +30,6 @@ describe("argsForRequest", () => {
         cpus: 2,
         memoryMiB: 512,
         dns: "1.1.1.1",
-        networkMode: "open",
-        networkAllowHosts: [],
         volumes: ["/tmp:/work"],
         ports: ["8080:80/tcp"],
       },
@@ -57,7 +56,7 @@ describe("argsForRequest", () => {
     ])
   })
 
-  test("builds create args with network deny", () => {
+  test("builds create args without runtime network flags", () => {
     const request = {
       id: "1",
       kind: "create",
@@ -68,8 +67,6 @@ describe("argsForRequest", () => {
         cpus: 2,
         memoryMiB: 512,
         dns: "1.1.1.1",
-        networkMode: "deny",
-        networkAllowHosts: [],
         volumes: [],
         ports: [],
       },
@@ -77,35 +74,87 @@ describe("argsForRequest", () => {
 
     const result = argsForRequest(request, baseConfig)
     expect(result.command).toBe("create")
-    expect(result.args).toContain("--network")
-    expect(result.args).toContain("none")
+    expect(result.args).not.toContain("--network")
+    expect(result.args).not.toContain("--allow-host")
   })
 
-  test("builds create args with network allowlist", () => {
-    const request = {
-      id: "1",
-      kind: "create",
-      payload: {
-        image: "ghcr.io/example/image",
-        name: "vm1",
-        workdir: "/tmp/work",
-        cpus: 2,
-        memoryMiB: 512,
-        dns: "1.1.1.1",
-        networkMode: "allowlist",
-        networkAllowHosts: ["api.github.com", "*.githubusercontent.com"],
-        volumes: [],
-        ports: [],
+  test("emits only backend-contract-approved invocation", () => {
+    const create = argsForRequest(
+      {
+        id: "c1",
+        kind: "create",
+        payload: {
+          image: "ghcr.io/example/image",
+          name: "vm1",
+          workdir: "/tmp/work",
+          cpus: 2,
+          memoryMiB: 512,
+          dns: "1.1.1.1",
+          volumes: ["/tmp:/work"],
+          ports: ["8080:80/tcp"],
+        },
       },
-    } as const
+      baseConfig,
+    )
 
-    const result = argsForRequest(request, baseConfig)
-    expect(result.command).toBe("create")
-    expect(result.args).toContain("--network")
-    expect(result.args).toContain("allowlist")
-    expect(result.args).toContain("--allow-host")
-    expect(result.args).toContain("api.github.com")
-    expect(result.args).toContain("*.githubusercontent.com")
+    const changevm = argsForRequest(
+      {
+        id: "v1",
+        kind: "changevm",
+        payload: {
+          name: "vm-old",
+          newName: "vm-new",
+          cpus: 8,
+          memoryMiB: 8192,
+          workdir: "/tmp/work",
+          removeVolumes: true,
+          volumes: ["/tmp:/work"],
+          removePorts: true,
+          ports: ["8080:80/tcp"],
+        },
+      },
+      baseConfig,
+    )
+
+    const start = argsForRequest(
+      {
+        id: "s1",
+        kind: "start",
+        payload: {
+          name: "vm-start",
+          command: "echo",
+          args: ["hello"],
+          env: ["FOO=bar"],
+          cpus: 1,
+          memoryMiB: 256,
+        },
+      },
+      baseConfig,
+    )
+
+    const list = argsForRequest(
+      {
+        id: "l1",
+        kind: "list",
+        payload: {
+          debug: true,
+        },
+      },
+      baseConfig,
+    )
+
+    expect(safeParseKrunvmInvocation(create).success).toBe(true)
+    expect(safeParseKrunvmInvocation(changevm).success).toBe(true)
+    expect(safeParseKrunvmInvocation(start).success).toBe(true)
+    expect(safeParseKrunvmInvocation(list).success).toBe(true)
+  })
+
+  test("rejects invocation with unsupported backend flag", () => {
+    const invalid = safeParseKrunvmInvocation({
+      command: "create",
+      args: ["--name", "vm1", "--network", "deny", "alpine:3.20"],
+    })
+    expect(invalid.success).toBe(false)
   })
 
   test("builds get args", () => {
@@ -115,7 +164,7 @@ describe("argsForRequest", () => {
       payload: null,
     } as const
 
-    expect(argsForRequest(request, baseConfig)).toEqual({ command: "get", args: [] })
+    expect(argsForRequest(request, baseConfig)).toEqual({ command: "list", args: [] })
   })
 
   test("builds delete and inspect args", () => {

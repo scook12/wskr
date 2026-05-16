@@ -4,11 +4,14 @@ import type {
   DeletePayload,
   ExecutableRequest,
   InspectPayload,
-  KrunCommand,
+  KrunvmBackendCommand,
+  KrunvmInvocation,
   ListPayload,
   StartPayload,
 } from "@wskr/types"
+import { parseKrunvmInvocation } from "@wskr/types"
 import type { DaemonConfig } from "./config"
+import { ProtocolError } from "./errors"
 
 function buildCreateArgs(payload: CreatePayload): string[] {
   const args = [
@@ -23,17 +26,6 @@ function buildCreateArgs(payload: CreatePayload): string[] {
     "--dns",
     payload.dns,
   ]
-
-  if (payload.networkMode === "deny") {
-    args.push("--network", "none")
-  }
-
-  if (payload.networkMode === "allowlist") {
-    args.push("--network", "allowlist")
-    for (const host of payload.networkAllowHosts) {
-      args.push("--allow-host", host)
-    }
-  }
 
   for (const volume of payload.volumes) {
     args.push("--volume", volume)
@@ -117,21 +109,44 @@ function buildListArgs(payload: ListPayload): string[] {
 export function argsForRequest(
   request: ExecutableRequest,
   _config: DaemonConfig,
-): { command: KrunCommand; args: string[] } {
+): KrunvmInvocation {
+  let invocation: { command: KrunvmBackendCommand; args: string[] }
+
   switch (request.kind) {
     case "get":
-      return { command: "get", args: [] }
+      invocation = { command: "list", args: [] }
+      break
     case "create":
-      return { command: "create", args: buildCreateArgs(request.payload) }
+      invocation = { command: "create", args: buildCreateArgs(request.payload) }
+      break
     case "delete":
-      return { command: "delete", args: buildDeleteArgs(request.payload) }
+      invocation = { command: "delete", args: buildDeleteArgs(request.payload) }
+      break
     case "inspect":
-      return { command: "inspect", args: buildInspectArgs(request.payload) }
+      invocation = { command: "inspect", args: buildInspectArgs(request.payload) }
+      break
     case "start":
-      return { command: "start", args: buildStartArgs(request.payload) }
+      invocation = { command: "start", args: buildStartArgs(request.payload) }
+      break
     case "changevm":
-      return { command: "changevm", args: buildChangeVmArgs(request.payload) }
+      invocation = { command: "changevm", args: buildChangeVmArgs(request.payload) }
+      break
     case "list":
-      return { command: "list", args: buildListArgs(request.payload) }
+      invocation = { command: "list", args: buildListArgs(request.payload) }
+      break
+    default: {
+      const _exhaustive: never = request
+      throw new ProtocolError("internal_error", `unsupported request kind '${_exhaustive}'`)
+    }
+  }
+
+  try {
+    return parseKrunvmInvocation(invocation)
+  } catch (error) {
+    throw new ProtocolError(
+      "invalid_message",
+      "request produced unsupported backend invocation",
+      error,
+    )
   }
 }

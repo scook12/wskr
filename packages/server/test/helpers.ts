@@ -41,59 +41,6 @@ if (command === 'get') {
 }
 
 if (command === 'create' || command === 'inspect' || command === 'start' || command === 'changevm' || command === 'delete') {
-  if (command === 'create') {
-    const networkModeIndex = args.findIndex((arg) => arg === '--network')
-    if (networkModeIndex >= 0) {
-      const mode = args[networkModeIndex + 1]
-      if (mode === 'none') {
-        process.env.WSKR_SHIM_NETWORK_MODE = 'none'
-      }
-
-      if (mode === 'allowlist') {
-        process.env.WSKR_SHIM_NETWORK_MODE = 'allowlist'
-        const hosts = []
-        for (let i = 0; i < args.length; i += 1) {
-          if (args[i] === '--allow-host' && args[i + 1]) {
-            hosts.push(args[i + 1])
-          }
-        }
-        process.env.WSKR_SHIM_NETWORK_ALLOW_HOSTS = hosts.join(',')
-      }
-    }
-  }
-
-  if (command === 'start') {
-    const cmdIndex = args.findIndex((arg) => arg === 'sh')
-    const shellCommand = cmdIndex >= 0 ? args.slice(cmdIndex + 2).join(' ') : ''
-    const mode = process.env.WSKR_SHIM_NETWORK_MODE
-    const hosts = (process.env.WSKR_SHIM_NETWORK_ALLOW_HOSTS ?? '')
-      .split(',')
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0)
-
-    if (mode === 'none' && /(curl|wget|ping|nc|ssh|scp|ftp|telnet)\b/.test(shellCommand)) {
-      console.error('network denied by shim policy')
-      process.exit(13)
-    }
-
-    if (mode === 'allowlist') {
-      const urlMatch = shellCommand.match(/https?:\/\/([^\s/:?#]+)(?::\d+)?(?:[/?#]|$)/i)
-      if (urlMatch?.[1]) {
-        const host = urlMatch[1].toLowerCase()
-        const allowed = hosts.some((pattern) => {
-          if (pattern.startsWith('*.')) {
-            return host === pattern.slice(2) || host.endsWith(pattern.slice(1))
-          }
-          return host === pattern.toLowerCase()
-        })
-        if (!allowed) {
-          console.error('network host denied by shim policy')
-          process.exit(14)
-        }
-      }
-    }
-  }
-
   console.log(JSON.stringify({ command, args }))
   process.exit(0)
 }

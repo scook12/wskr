@@ -64,8 +64,6 @@ describe("wskr provider", () => {
           workdir: "/tmp",
           cpus: 1,
           dns: "1.1.1.1",
-          networkMode: "open",
-          networkAllowHosts: [],
           volumes: [],
           ports: [],
           memoryMiB: 512,

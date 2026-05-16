@@ -39,6 +39,7 @@ When provisioning through `@wskr/provider`, the plugin chooses the WSKR client U
 - Profile runtime `workdir` values are sent to the WSKR server in `create` requests.
 - Server forwards `workdir` to the runtime command layer.
 - Runtime policy ownership stays in plugin/client configuration.
+- Network policy is enforced at plugin command-policy layer and is not passed as krunvm `create` flags.
 
 ## Development
 

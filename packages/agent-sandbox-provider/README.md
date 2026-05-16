@@ -23,8 +23,6 @@ const provider = wskr({
       workdir: "/workspace",
       cpus: 1,
       dns: "1.1.1.1",
-      networkMode: "deny",
-      networkAllowHosts: [],
       volumes: [],
       ports: [],
       memoryMiB: 1024,
