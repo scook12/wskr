@@ -77,21 +77,11 @@ export const CreatePayloadSchema = z
     workdir: z.string().min(1).max(1024),
     cpus: z.number().int().min(1).max(64),
     dns: z.string().min(1).max(256),
-    networkMode: z.enum(["open", "deny", "allowlist"]),
-    networkAllowHosts: z.array(z.string().min(1).max(512)).max(256),
     volumes: z.array(z.string().min(1).max(2048)).max(64),
     ports: z.array(PortMappingSchema).max(64),
     memoryMiB: z.number().int().min(64).max(262144),
   })
-  .superRefine((value, ctx) => {
-    if (value.networkMode === "allowlist" && value.networkAllowHosts.length === 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "networkAllowHosts must not be empty when networkMode is 'allowlist'",
-        path: ["networkAllowHosts"],
-      })
-    }
-  })
+  .strict()
 
 export const ChangePayloadSchema = z
   .object({
@@ -105,6 +95,7 @@ export const ChangePayloadSchema = z
     removePorts: z.boolean().optional(),
     ports: z.array(PortMappingSchema).max(64).optional(),
   })
+  .strict()
   .refine((value) => !(value.removeVolumes === true && value.volumes && value.volumes.length > 0), {
     message: "removeVolumes cannot be combined with volumes",
   })
@@ -112,30 +103,40 @@ export const ChangePayloadSchema = z
     message: "removePorts cannot be combined with ports",
   })
 
-export const DeletePayloadSchema = z.object({
-  name: VmNameSchema,
-})
+export const DeletePayloadSchema = z
+  .object({
+    name: VmNameSchema,
+  })
+  .strict()
 
-export const InspectPayloadSchema = z.object({
-  name: VmNameSchema,
-})
+export const InspectPayloadSchema = z
+  .object({
+    name: VmNameSchema,
+  })
+  .strict()
 
-export const StartPayloadSchema = z.object({
-  name: VmNameSchema,
-  command: z.string().min(1).max(512).optional(),
-  args: z.array(z.string().min(1).max(2048)).max(128).default([]),
-  env: z.array(EnvPairSchema).max(128).default([]),
-  cpus: z.number().int().min(1).max(64),
-  memoryMiB: z.number().int().min(64).max(262144),
-})
+export const StartPayloadSchema = z
+  .object({
+    name: VmNameSchema,
+    command: z.string().min(1).max(512).optional(),
+    args: z.array(z.string().min(1).max(2048)).max(128).default([]),
+    env: z.array(EnvPairSchema).max(128).default([]),
+    cpus: z.number().int().min(1).max(64),
+    memoryMiB: z.number().int().min(64).max(262144),
+  })
+  .strict()
 
-export const ListPayloadSchema = z.object({
-  debug: z.boolean().optional(),
-})
+export const ListPayloadSchema = z
+  .object({
+    debug: z.boolean().optional(),
+  })
+  .strict()
 
-export const CancelPayloadSchema = z.object({
-  opId: z.string().uuid(),
-})
+export const CancelPayloadSchema = z
+  .object({
+    opId: z.string().uuid(),
+  })
+  .strict()
 
 export const RequestSchema = z.discriminatedUnion("kind", [
   z.object({ id: RequestIdSchema, kind: z.literal("get"), payload: GetPayloadSchema }),

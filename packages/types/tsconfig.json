@@ -8,5 +8,5 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src/index.ts", "src/protocol.ts", "src/runtime.ts"]
+  "include": ["src/index.ts", "src/protocol.ts", "src/runtime.ts", "src/backend-contract.ts"]
 }
