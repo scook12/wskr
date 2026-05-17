@@ -565,8 +565,9 @@ function resolveVolumeMounts(
   repoRoot: string,
 ): string[] {
   return mounts.map((mount: MountConfig) => {
+    // TODO: Revisit mount mode semantics when krunvm adds explicit ro/rw support.
     const host = resolveMountHost(mount.host, repoRoot)
-    return `${host}:${mount.guest}:${mount.mode}`
+    return `${host}:${mount.guest}`
   })
 }
 

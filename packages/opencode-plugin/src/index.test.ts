@@ -302,7 +302,13 @@ describe("plugin scope and mounts", () => {
   it("expands repoRoot mount placeholders", () => {
     const mounts = [{ host: "{repoRoot}", guest: "/workspace", mode: "rw" }]
     const resolved = internal.resolveVolumeMounts(mounts as any, "/Users/test/repo")
-    expect(resolved).toEqual(["/Users/test/repo:/workspace:rw"])
+    expect(resolved).toEqual(["/Users/test/repo:/workspace"])
+  })
+
+  it("accepts mount mode omission and defaults to readonly semantics", () => {
+    const mounts = [{ host: "{repoRoot}", guest: "/workspace" }]
+    const resolved = internal.resolveVolumeMounts(mounts as any, "/Users/test/repo")
+    expect(resolved).toEqual(["/Users/test/repo:/workspace"])
   })
 
   it("rejects allowlist mode with empty hosts", () => {

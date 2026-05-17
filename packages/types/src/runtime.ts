@@ -21,7 +21,7 @@ export const WskrProfileNameSchema = z
 export const WskrMountSchema = z.object({
   host: z.string().min(1).max(2048),
   guest: z.string().min(1).max(1024),
-  mode: z.enum(["ro", "rw"]),
+  mode: z.enum(["ro", "rw"]).default("ro"),
 })
 
 export const WskrRuntimeSchema = z.object({

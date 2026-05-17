@@ -247,6 +247,82 @@ describe("server integration (shim default)", () => {
     }
   })
 
+  test("create passes krunvm-compatible --volume host:guest args", async () => {
+    if (useReal) {
+      return
+    }
+
+    const dir = makeTempDir("wskr-integration-create-volumes-")
+    try {
+      const shimPath = createShimBinary(dir)
+      const port = await getFreePort()
+      const started = startServer({
+        config: buildConfig(dir, port, shimPath),
+      })
+
+      const ws = await openRawWebSocket(`ws://127.0.0.1:${port}/rpc`)
+      try {
+        const id = crypto.randomUUID()
+        ws.send(
+          JSON.stringify({
+            id,
+            kind: "create",
+            payload: {
+              image: "alpine:3.20",
+              name: "vm-create-volume-test",
+              workdir: "/workspace",
+              cpus: 1,
+              memoryMiB: 512,
+              dns: "1.1.1.1",
+              volumes: ["/tmp:/workspace", "/var/tmp:/cache"],
+              ports: [],
+            },
+          }),
+        )
+
+        const accepted = await waitForAccepted(ws, id)
+        expect(accepted.id).toBe(id)
+
+        let createInvocation: { command?: string; args?: string[] } | null = null
+        const startedAt = Date.now()
+        while (Date.now() - startedAt < 3000) {
+          const message = (await nextMessage(ws)) as {
+            event?: string
+            id?: string
+            opId?: string
+            ok?: boolean
+            result?: { stdout?: string }
+          }
+          if (message.event === "op.done" && message.id === id && message.opId === accepted.opId) {
+            expect(message.ok).toBe(true)
+            const stdout = message.result?.stdout ?? ""
+            createInvocation = JSON.parse(stdout) as { command?: string; args?: string[] }
+            break
+          }
+        }
+
+        expect(createInvocation).not.toBeNull()
+        expect(createInvocation?.command).toBe("create")
+        const args = createInvocation?.args ?? []
+        const volumeFlags: string[] = []
+        for (let i = 0; i < args.length; i += 1) {
+          if (args[i] === "--volume" && args[i + 1]) {
+            volumeFlags.push(args[i + 1])
+          }
+        }
+        expect(volumeFlags).toEqual(["/tmp:/workspace", "/var/tmp:/cache"])
+        expect(volumeFlags.some((value) => value.endsWith(":ro") || value.endsWith(":rw"))).toBe(
+          false,
+        )
+      } finally {
+        ws.close(1000, "done")
+        await started.runtime.stop()
+      }
+    } finally {
+      cleanupDir(dir)
+    }
+  })
+
   test("rejects cancel for unknown op id", async () => {
     if (useReal) {
       return
