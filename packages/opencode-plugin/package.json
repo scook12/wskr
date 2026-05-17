@@ -1,6 +1,6 @@
 {
   "name": "@wskr/opencode-plugin",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": false,
   "type": "module",
   "main": "./dist/index.js",
@@ -29,8 +29,8 @@
   },
   "dependencies": {
     "@opencode-ai/plugin": "^1.14.50",
-    "@wskr/provider": "^0.1.4",
-    "@wskr/types": "^0.1.4",
+    "@wskr/provider": "^0.1.5",
+    "@wskr/types": "^0.1.5",
     "effect": "4.0.0-beta.65",
     "sandbox-agent": "^0.4.2",
     "zod": "^4.4.3"
