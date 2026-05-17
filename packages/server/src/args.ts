@@ -57,7 +57,7 @@ function buildStartArgs(payload: StartPayload): string[] {
   args.push(payload.name)
 
   if (payload.command) {
-    args.push(payload.command, ...payload.args)
+    args.push("--", payload.command, ...payload.args)
   }
 
   return args
