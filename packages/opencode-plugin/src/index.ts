@@ -116,6 +116,8 @@ type AuditRecord = {
   is_subagent: boolean
   resolved_profile: string
   normalized_command: string
+  normalized_command_hash: string
+  normalized_command_preview: string
   decision: string
   decision_reason: string
   vm_id: string
@@ -214,6 +216,10 @@ function resolveRuntimeClientOptions(options: {
 
 function normalizeCommand(command: string): string {
   return command.trim().replace(/\s+/g, " ")
+}
+
+function sha256Hex(input: string): string {
+  return createHash("sha256").update(input).digest("hex")
 }
 
 function patternToRegExp(pattern: string): RegExp {
@@ -907,6 +913,7 @@ function buildAuditRecord(params: {
   context: ToolContext
   resolvedProfile: ResolvedProfile
   command: string
+  policy: RuntimePolicy
   decision: string
   decisionReason: string
   vmId?: string
@@ -914,6 +921,8 @@ function buildAuditRecord(params: {
   exitCode?: number | null
   durationMs?: number | null
 }): AuditRecord {
+  const auditCommandFields = buildAuditCommandFields(params.command, params.policy)
+
   return {
     timestamp: new Date().toISOString(),
     session_id: params.context.sessionID,
@@ -921,7 +930,9 @@ function buildAuditRecord(params: {
     agent_name: params.context.agent,
     is_subagent: params.resolvedProfile.isSubAgent,
     resolved_profile: params.resolvedProfile.profile,
-    normalized_command: params.command,
+    normalized_command: auditCommandFields.normalized_command,
+    normalized_command_hash: auditCommandFields.normalized_command_hash,
+    normalized_command_preview: auditCommandFields.normalized_command_preview,
     decision: params.decision,
     decision_reason: params.decisionReason,
     vm_id: params.vmId ?? "",
@@ -951,6 +962,25 @@ function applyRedaction(output: string, policy: RuntimePolicy): string {
   return result
 }
 
+function buildAuditCommandFields(
+  command: string,
+  policy: RuntimePolicy,
+): {
+  normalized_command: string
+  normalized_command_hash: string
+  normalized_command_preview: string
+} {
+  const normalized = normalizeCommand(command)
+  const normalized_command_hash = sha256Hex(normalized)
+  const normalized_command_preview = applyRedaction(normalized, policy).slice(0, 200)
+
+  return {
+    normalized_command: normalized_command_preview,
+    normalized_command_hash,
+    normalized_command_preview,
+  }
+}
+
 function getTimeoutMs(timeout?: number): number {
   if (!timeout) {
     return DEFAULT_TIMEOUT_MS
@@ -977,6 +1007,7 @@ export const internal = {
   reconnectSandboxClient,
   disposeClientEntry,
   applyRedaction,
+  buildAuditCommandFields,
   formatProcessOutput,
   parseBoundedInt,
   sanitizeVmName,
@@ -1151,6 +1182,7 @@ async function executePolicyBashCommand(options: {
         context,
         resolvedProfile,
         command,
+        policy,
         decision: "deny",
         decisionReason: message,
       }),
@@ -1189,6 +1221,7 @@ async function executePolicyBashCommand(options: {
         context,
         resolvedProfile,
         command,
+        policy,
         decision: decision.action,
         decisionReason: decision.ruleId,
         vmId: execution.sandboxId,
@@ -1209,6 +1242,7 @@ async function executePolicyBashCommand(options: {
         context,
         resolvedProfile,
         command,
+        policy,
         decision: decision.action,
         decisionReason: error instanceof Error ? error.message : String(error),
       }),

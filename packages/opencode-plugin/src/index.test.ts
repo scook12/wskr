@@ -325,6 +325,34 @@ describe("plugin scope and mounts", () => {
   })
 })
 
+describe("audit command minimization", () => {
+  it("hashes command and redacts preview", () => {
+    const policy = makePolicy()
+    policy.redaction.rules = [
+      {
+        id: "api-token",
+        pattern: "sk-[A-Za-z0-9]+",
+        replacement: "[REDACTED]",
+      },
+    ]
+
+    const command = "curl -H 'Authorization: Bearer sk-abc123' https://example.com"
+    const fields = internal.buildAuditCommandFields(command, policy)
+
+    expect(fields.normalized_command_hash).toHaveLength(64)
+    expect(fields.normalized_command_preview).toContain("[REDACTED]")
+    expect(fields.normalized_command_preview).not.toContain("sk-abc123")
+    expect(fields.normalized_command).toBe(fields.normalized_command_preview)
+  })
+
+  it("caps preview length to avoid over-logging", () => {
+    const policy = makePolicy()
+    const longCommand = `echo ${"a".repeat(1000)}`
+    const fields = internal.buildAuditCommandFields(longCommand, policy)
+    expect(fields.normalized_command_preview.length).toBe(200)
+  })
+})
+
 describe("plugin pool and teardown", () => {
   it("removes failed pending entry and retries creation", async () => {
     const policy = makePolicy()

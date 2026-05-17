@@ -14,7 +14,7 @@ bun add @wskr/opencode-plugin
 - Resolves agent -> profile -> command policy.
 - Enforces command decisions (`allow` / `ask` / `deny` / `never`).
 - Runs commands through Sandbox Agent with WSKR provider.
-- Applies runtime redaction and audit logging.
+- Applies runtime redaction and audit logging with command minimization (hash + redacted preview).
 
 ## Environment
 
