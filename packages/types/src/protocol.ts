@@ -64,7 +64,34 @@ export const VmNameSchema = z
   .max(128)
   .regex(/^[a-zA-Z0-9._-]+$/, "name must match /^[a-zA-Z0-9._-]+$/")
 export const EnvPairSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*=.*/, "env must be KEY=value")
-export const PortMappingSchema = z.string().regex(/^\d{1,5}:\d{1,5}$/, "invalid port mapping")
+
+function isU16(raw: string): boolean {
+  if (!/^\d{1,5}$/.test(raw)) return false
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 65535
+}
+
+export const PortMappingSchema = z
+  .string()
+  .regex(/^\d{1,5}:\d{1,5}$/, "invalid port mapping")
+  .refine((value) => {
+    const [hostPort, guestPort] = value.split(":")
+    if (!hostPort || !guestPort) return false
+    return isU16(hostPort) && isU16(guestPort)
+  }, "port mapping values must be between 0 and 65535")
+
+export const VolumeMappingSchema = z
+  .string()
+  .min(1)
+  .max(2048)
+  .refine((value) => {
+    const parts = value.split(":")
+    if (parts.length !== 2) return false
+    const [hostPath, guestPath] = parts
+    if (!hostPath || !guestPath) return false
+    if (!hostPath.startsWith("/")) return false
+    return /^\/[^/:]+$/.test(guestPath)
+  }, "invalid volume mapping, expected absolute host_path and guest_path '/name'")
 
 export const GetPayloadSchema = z.null()
 
@@ -75,7 +102,7 @@ export const CreatePayloadSchema = z
     workdir: z.string().min(1).max(1024),
     cpus: z.number().int().min(1).max(64),
     dns: z.string().min(1).max(256),
-    volumes: z.array(z.string().min(1).max(2048)).max(64),
+    volumes: z.array(VolumeMappingSchema).max(64),
     ports: z.array(PortMappingSchema).max(64),
     memoryMiB: z.number().int().min(64).max(262144),
   })
@@ -85,11 +112,11 @@ export const ChangePayloadSchema = z
   .object({
     name: VmNameSchema,
     newName: VmNameSchema.optional(),
-    cpus: z.number().int().min(1).max(64).optional(),
-    memoryMiB: z.number().int().min(64).max(262144).optional(),
+    cpus: z.number().int().min(1).max(8).optional(),
+    memoryMiB: z.number().int().min(64).max(16384).optional(),
     workdir: z.string().min(1).max(1024).optional(),
     removeVolumes: z.boolean().optional(),
-    volumes: z.array(z.string().min(1).max(2048)).max(64).optional(),
+    volumes: z.array(VolumeMappingSchema).max(64).optional(),
     removePorts: z.boolean().optional(),
     ports: z.array(PortMappingSchema).max(64).optional(),
   })

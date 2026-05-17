@@ -60,6 +60,9 @@ Preflight checks include:
 - Server request payloads are validated strictly against protocol schemas.
 - Unsupported extra fields are rejected at protocol parse time with `invalid_message`.
 - Server only emits krunvm-documented CLI flags for each command.
+- Payload value compatibility is aligned with current krunvm parser behavior:
+  - `ports` must be `host:guest` with each port in `0..65535`.
+  - `volumes` must be `host:guest` with absolute host path and guest path as a single root child (for example `/workspace`).
 
 ## Development
 

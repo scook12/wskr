@@ -16,6 +16,39 @@ export function createShimBinary(dir: string): string {
   const source = String.raw`#!/usr/bin/env bun
 const [, , command, ...args] = Bun.argv
 
+function parsePortPair(raw) {
+  const parts = raw.split(':')
+  if (parts.length !== 2) {
+    throw new Error("Too many ':' separators")
+  }
+  const hostPort = Number.parseInt(parts[0], 10)
+  const guestPort = Number.parseInt(parts[1], 10)
+  if (!Number.isFinite(hostPort) || hostPort < 0 || hostPort > 65535) {
+    throw new Error('Invalid host port')
+  }
+  if (!Number.isFinite(guestPort) || guestPort < 0 || guestPort > 65535) {
+    throw new Error('Invalid guest port')
+  }
+}
+
+function parseVolumePair(raw) {
+  const parts = raw.split(':')
+  if (parts.length !== 2) {
+    throw new Error("Too many ':' separators")
+  }
+  const hostPath = parts[0]
+  const guestPath = parts[1]
+  if (!hostPath.startsWith('/')) {
+    throw new Error('Invalid volume, host_path is not an absolute path')
+  }
+  if (!guestPath.startsWith('/')) {
+    throw new Error('Invalid volume, guest_path is not an absolute path')
+  }
+  if (!/^\/[^/:]+$/.test(guestPath)) {
+    throw new Error('Invalid volume, only single direct root children are supported as guest_path')
+  }
+}
+
 const failCommand = Bun.env.WSKR_SHIM_FAIL_COMMAND
 if (failCommand && failCommand === command) {
   console.error('forced failure')
@@ -41,6 +74,26 @@ if (command === 'get') {
 }
 
 if (command === 'create' || command === 'inspect' || command === 'start' || command === 'changevm' || command === 'delete') {
+  if (command === 'create' || command === 'changevm') {
+    for (let i = 0; i < args.length; i += 1) {
+      const token = args[i]
+      const value = args[i + 1]
+      if (token === '--port' && value) {
+        parsePortPair(value)
+      }
+      if (token === '--volume' && value) {
+        parseVolumePair(value)
+      }
+    }
+
+    if (command === 'create') {
+      const image = args[args.length - 1]
+      if (!image || image.startsWith('-')) {
+        throw new Error('Invalid create image argument')
+      }
+    }
+  }
+
   console.log(JSON.stringify({ command, args }))
   process.exit(0)
 }

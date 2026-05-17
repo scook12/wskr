@@ -326,6 +326,69 @@ describe("plugin scope and mounts", () => {
     expect(spec.create.ports[0]?.includes("/")).toBe(false)
   })
 
+  it("rejects policy with invalid mount guest path shape", async () => {
+    const invalidToml = `
+version = 1
+
+[agents.primary]
+"*" = "strict"
+
+[agents.subagent]
+"*" = "strict"
+
+[command_policies.strict_readonly]
+default_action = "deny"
+
+[profiles.strict]
+command_policy = "strict_readonly"
+
+[profiles.strict.runtime]
+image = "alpine:3.20"
+workdir = "/workspace"
+cpus = 1
+memory_mib = 512
+dns = "1.1.1.1"
+sandbox_agent_command = "sandbox-agent"
+sandbox_agent_args = ["server"]
+
+[[profiles.strict.runtime.mounts]]
+host = "{repoRoot}"
+guest = "/workspace/subdir"
+
+[profiles.strict.network]
+mode = "deny"
+allow_hosts = []
+
+[profiles.strict.secrets]
+mode = "dummy"
+allowlist = []
+dummy_prefix = "DUMMY"
+
+[profiles.strict.secrets.aliases]
+
+[profiles.strict.auth]
+stub_env = {}
+`
+
+    const dir = `/tmp/wskr-policy-invalid-${Date.now()}`
+    const policyPath = `${dir}/wskr.toml`
+    await Bun.write(policyPath, invalidToml)
+
+    const previousPolicyFile = process.env.OPENCODE_SBX_POLICY_FILE
+    process.env.OPENCODE_SBX_POLICY_FILE = policyPath
+    try {
+      await expect(loadRuntimePolicy()).rejects.toThrow(
+        "mount guest must be a root child path like '/workspace'",
+      )
+    } finally {
+      if (previousPolicyFile === undefined) {
+        delete process.env.OPENCODE_SBX_POLICY_FILE
+      } else {
+        process.env.OPENCODE_SBX_POLICY_FILE = previousPolicyFile
+      }
+    }
+  })
+
   it("rejects allowlist mode with empty hosts", () => {
     const allowlistWithoutHosts = {
       ...makePolicy().profiles.strict,

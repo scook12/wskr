@@ -42,6 +42,12 @@ When provisioning through `@wskr/provider`, the plugin chooses the WSKR client U
 - Runtime policy ownership stays in plugin/client configuration.
 - Network policy is enforced at plugin command-policy layer and is not passed as krunvm `create` flags.
 
+## Runtime Compatibility Notes
+
+- Mounts are translated to krunvm `--volume host:guest` values.
+- Guest mount paths must be a single root child path (for example `/workspace`).
+- Mount `mode` is currently metadata only and is ignored for krunvm CLI arguments.
+
 ## Development
 
 ```bash

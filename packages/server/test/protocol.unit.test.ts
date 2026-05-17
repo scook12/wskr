@@ -90,4 +90,62 @@ describe("parseIncomingMessage", () => {
       expect((error as ProtocolError).code).toBe("invalid_message")
     }
   })
+
+  test("throws invalid_message for out-of-range create port", () => {
+    expect(() =>
+      parseIncomingMessage(
+        JSON.stringify({
+          id: "req-1",
+          kind: "create",
+          payload: {
+            image: "alpine:3.20",
+            name: "vm1",
+            workdir: "/workspace",
+            cpus: 1,
+            memoryMiB: 512,
+            dns: "1.1.1.1",
+            volumes: ["/tmp:/workspace"],
+            ports: ["70000:3000"],
+          },
+        }),
+      ),
+    ).toThrow(ProtocolError)
+  })
+
+  test("throws invalid_message for nested guest path volume", () => {
+    expect(() =>
+      parseIncomingMessage(
+        JSON.stringify({
+          id: "req-1",
+          kind: "create",
+          payload: {
+            image: "alpine:3.20",
+            name: "vm1",
+            workdir: "/workspace",
+            cpus: 1,
+            memoryMiB: 512,
+            dns: "1.1.1.1",
+            volumes: ["/tmp:/workspace/subdir"],
+            ports: [],
+          },
+        }),
+      ),
+    ).toThrow(ProtocolError)
+  })
+
+  test("throws invalid_message for out-of-range changevm resources", () => {
+    expect(() =>
+      parseIncomingMessage(
+        JSON.stringify({
+          id: "req-1",
+          kind: "changevm",
+          payload: {
+            name: "vm1",
+            cpus: 16,
+            memoryMiB: 32768,
+          },
+        }),
+      ),
+    ).toThrow(ProtocolError)
+  })
 })

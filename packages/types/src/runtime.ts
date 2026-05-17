@@ -19,8 +19,19 @@ export const WskrProfileNameSchema = z
   .regex(/^[a-zA-Z0-9._-]+$/)
 
 export const WskrMountSchema = z.object({
-  host: z.string().min(1).max(2048),
-  guest: z.string().min(1).max(1024),
+  host: z
+    .string()
+    .min(1)
+    .max(2048)
+    .refine(
+      (value) => value.startsWith("/") || value === "{repoRoot}" || value.startsWith("{repoRoot}/"),
+      "mount host must be absolute or begin with {repoRoot}",
+    ),
+  guest: z
+    .string()
+    .min(1)
+    .max(1024)
+    .regex(/^\/[^/:]+$/, "mount guest must be a root child path like '/workspace'"),
   mode: z.enum(["ro", "rw"]).default("ro"),
 })
 
