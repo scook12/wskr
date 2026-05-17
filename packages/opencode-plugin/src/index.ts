@@ -188,6 +188,39 @@ function deriveKrunClientUrlFromServerEnv(env: EnvMap = process.env): string {
   throw new Error("KRUN_SERVER_TRANSPORT must be 'unix' or 'tcp' when deriving WSKR client URL")
 }
 
+function isLocalHost(hostname: string): boolean {
+  const normalized = hostname.toLowerCase()
+  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1"
+}
+
+function maybeWarnInsecureRuntimeClientUrl(url: string, env: EnvMap = process.env): void {
+  const trimmed = url.trim()
+  if (!trimmed.startsWith("ws://")) {
+    return
+  }
+
+  let hostname = ""
+  try {
+    const parsed = new URL(trimmed)
+    hostname = parsed.hostname
+  } catch {
+    const withoutScheme = trimmed.slice("ws://".length)
+    hostname = withoutScheme.split("/")[0]?.split(":")[0] ?? ""
+  }
+
+  if (isLocalHost(hostname)) {
+    return
+  }
+
+  if (normalizeNonEmpty(env.OPENCODE_WSKR_SILENCE_INSECURE_WS_WARNING) === "1") {
+    return
+  }
+
+  console.warn(
+    `[wskr] Warning: runtime client URL '${trimmed}' uses insecure remote ws:// transport; prefer wss:// or unix socket transport.`,
+  )
+}
+
 function resolveRuntimeClientOptions(options: {
   policy: RuntimePolicy
   explicitClientOptions?: RuntimeClientOptions
@@ -196,21 +229,26 @@ function resolveRuntimeClientOptions(options: {
   const env = options.env ?? process.env
   const explicitUrl = normalizeNonEmpty(options.explicitClientOptions?.url)
   if (explicitUrl) {
+    maybeWarnInsecureRuntimeClientUrl(explicitUrl, env)
     return { url: explicitUrl }
   }
 
   const envOverrideUrl = normalizeNonEmpty(env.OPENCODE_WSKR_CLIENT_URL)
   if (envOverrideUrl) {
+    maybeWarnInsecureRuntimeClientUrl(envOverrideUrl, env)
     return { url: envOverrideUrl }
   }
 
   const policyUrl = normalizeNonEmpty(options.policy.client.url)
   if (policyUrl) {
+    maybeWarnInsecureRuntimeClientUrl(policyUrl, env)
     return { url: policyUrl }
   }
 
+  const derivedUrl = deriveKrunClientUrlFromServerEnv(env)
+  maybeWarnInsecureRuntimeClientUrl(derivedUrl, env)
   return {
-    url: deriveKrunClientUrlFromServerEnv(env),
+    url: derivedUrl,
   }
 }
 
@@ -999,6 +1037,7 @@ export const internal = {
   resolveVolumeMounts,
   toUnixSocketWebSocketUrl,
   deriveKrunClientUrlFromServerEnv,
+  maybeWarnInsecureRuntimeClientUrl,
   resolveRuntimeClientOptions,
   buildWskrResolvedSpec,
   startSandboxAgentWithRetry,

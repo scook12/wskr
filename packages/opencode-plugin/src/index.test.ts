@@ -101,6 +101,18 @@ function makePolicy(): RuntimePolicy {
 }
 
 describe("runtime client URL resolution", () => {
+  const originalWarn = console.warn
+
+  function withWarnCapture(run: (warn: ReturnType<typeof mock>) => void): void {
+    const warn = mock(() => {})
+    console.warn = warn as any
+    try {
+      run(warn)
+    } finally {
+      console.warn = originalWarn
+    }
+  }
+
   it("derives unix socket URL by default", () => {
     const url = internal.deriveKrunClientUrlFromServerEnv({})
     expect(url).toBe("ws+unix:///run/krunvmd.sock:/rpc")
@@ -116,53 +128,86 @@ describe("runtime client URL resolution", () => {
   })
 
   it("uses precedence explicit > env override > policy > derived", () => {
-    const policy = makePolicy()
-    policy.client = {
-      url: "ws://policy-host:1001/rpc",
-    }
+    withWarnCapture(() => {
+      const policy = makePolicy()
+      policy.client = {
+        url: "ws://policy-host:1001/rpc",
+      }
 
-    const env = {
-      OPENCODE_WSKR_CLIENT_URL: "ws://env-host:1002/rpc",
-      KRUN_SERVER_TRANSPORT: "tcp",
-      KRUN_TCP_HOST: "derived-host",
-      KRUN_TCP_PORT: "1003",
-    }
-
-    const explicit = internal.resolveRuntimeClientOptions({
-      policy,
-      explicitClientOptions: { url: "ws://explicit-host:1000/rpc" },
-      env,
-    })
-    expect(explicit.url).toBe("ws://explicit-host:1000/rpc")
-
-    const fromEnv = internal.resolveRuntimeClientOptions({
-      policy,
-      env,
-    })
-    expect(fromEnv.url).toBe("ws://env-host:1002/rpc")
-
-    const fromPolicy = internal.resolveRuntimeClientOptions({
-      policy,
-      env: {
+      const env = {
+        OPENCODE_WSKR_CLIENT_URL: "ws://env-host:1002/rpc",
         KRUN_SERVER_TRANSPORT: "tcp",
         KRUN_TCP_HOST: "derived-host",
         KRUN_TCP_PORT: "1003",
-      },
-    })
-    expect(fromPolicy.url).toBe("ws://policy-host:1001/rpc")
+      }
 
-    const fromDerived = internal.resolveRuntimeClientOptions({
-      policy: {
-        ...policy,
-        client: {},
-      },
-      env: {
-        KRUN_SERVER_TRANSPORT: "tcp",
-        KRUN_TCP_HOST: "derived-host",
-        KRUN_TCP_PORT: "1003",
-      },
+      const explicit = internal.resolveRuntimeClientOptions({
+        policy,
+        explicitClientOptions: { url: "ws://explicit-host:1000/rpc" },
+        env,
+      })
+      expect(explicit.url).toBe("ws://explicit-host:1000/rpc")
+
+      const fromEnv = internal.resolveRuntimeClientOptions({
+        policy,
+        env,
+      })
+      expect(fromEnv.url).toBe("ws://env-host:1002/rpc")
+
+      const fromPolicy = internal.resolveRuntimeClientOptions({
+        policy,
+        env: {
+          KRUN_SERVER_TRANSPORT: "tcp",
+          KRUN_TCP_HOST: "derived-host",
+          KRUN_TCP_PORT: "1003",
+        },
+      })
+      expect(fromPolicy.url).toBe("ws://policy-host:1001/rpc")
+
+      const fromDerived = internal.resolveRuntimeClientOptions({
+        policy: {
+          ...policy,
+          client: {},
+        },
+        env: {
+          KRUN_SERVER_TRANSPORT: "tcp",
+          KRUN_TCP_HOST: "derived-host",
+          KRUN_TCP_PORT: "1003",
+        },
+      })
+      expect(fromDerived.url).toBe("ws://derived-host:1003/rpc")
     })
-    expect(fromDerived.url).toBe("ws://derived-host:1003/rpc")
+  })
+
+  it("warns for insecure remote ws:// runtime client URLs", () => {
+    withWarnCapture((warn) => {
+      const policy = makePolicy()
+      const fromPolicy = internal.resolveRuntimeClientOptions({
+        policy: {
+          ...policy,
+          client: { url: "ws://remote-host:8877/rpc" },
+        },
+      })
+      expect(fromPolicy.url).toBe("ws://remote-host:8877/rpc")
+      expect(warn).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it("does not warn for local ws:// runtime client URLs", () => {
+    withWarnCapture((warn) => {
+      internal.maybeWarnInsecureRuntimeClientUrl("ws://127.0.0.1:8877/rpc", {})
+      internal.maybeWarnInsecureRuntimeClientUrl("ws://localhost:8877/rpc", {})
+      expect(warn).toHaveBeenCalledTimes(0)
+    })
+  })
+
+  it("allows warning to be silenced via env override", () => {
+    withWarnCapture((warn) => {
+      internal.maybeWarnInsecureRuntimeClientUrl("ws://remote-host:8877/rpc", {
+        OPENCODE_WSKR_SILENCE_INSECURE_WS_WARNING: "1",
+      })
+      expect(warn).toHaveBeenCalledTimes(0)
+    })
   })
 })
 

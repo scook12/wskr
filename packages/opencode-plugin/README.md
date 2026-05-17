@@ -22,6 +22,7 @@ bun add @wskr/opencode-plugin
 - `OPENCODE_SANDBOX_AGENT_BASE_URL`: connect to existing sandbox-agent.
 - `OPENCODE_SANDBOX_AGENT_TOKEN`: token for sandbox-agent access.
 - `OPENCODE_WSKR_CLIENT_URL`: explicit WSKR runtime client URL override.
+- `OPENCODE_WSKR_SILENCE_INSECURE_WS_WARNING`: set to `1` to suppress warn-only notices for remote `ws://` runtime URLs.
 
 ## Runtime Client URL Resolution
 
