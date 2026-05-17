@@ -31,7 +31,7 @@ describe("argsForRequest", () => {
         memoryMiB: 512,
         dns: "1.1.1.1",
         volumes: ["/tmp:/work"],
-        ports: ["8080:80/tcp"],
+        ports: ["8080:80"],
       },
     } as const
 
@@ -51,7 +51,7 @@ describe("argsForRequest", () => {
       "--volume",
       "/tmp:/work",
       "--port",
-      "8080:80/tcp",
+      "8080:80",
       "ghcr.io/example/image",
     ])
   })
@@ -91,7 +91,7 @@ describe("argsForRequest", () => {
           memoryMiB: 512,
           dns: "1.1.1.1",
           volumes: ["/tmp:/work"],
-          ports: ["8080:80/tcp"],
+          ports: ["8080:80"],
         },
       },
       baseConfig,
@@ -110,7 +110,7 @@ describe("argsForRequest", () => {
           removeVolumes: true,
           volumes: ["/tmp:/work"],
           removePorts: true,
-          ports: ["8080:80/tcp"],
+          ports: ["8080:80"],
         },
       },
       baseConfig,
@@ -272,7 +272,7 @@ describe("argsForRequest", () => {
         removeVolumes: true,
         volumes: ["/tmp:/work"],
         removePorts: true,
-        ports: ["8080:80/tcp"],
+        ports: ["8080:80"],
       },
     } as const
 
@@ -292,7 +292,7 @@ describe("argsForRequest", () => {
         "/tmp:/work",
         "--remove-ports",
         "--port",
-        "8080:80/tcp",
+        "8080:80",
         "vm-old",
       ],
     })

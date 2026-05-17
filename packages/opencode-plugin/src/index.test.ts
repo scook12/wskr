@@ -311,6 +311,21 @@ describe("plugin scope and mounts", () => {
     expect(resolved).toEqual(["/Users/test/repo:/workspace"])
   })
 
+  it("builds krunvm-compatible create ports as host:guest", async () => {
+    const policy = makePolicy()
+    const spec = await internal.buildWskrResolvedSpec({
+      profileName: "strict",
+      profileHash: "hash123",
+      policy,
+      context: createToolContext({ worktree: "/repo", directory: "/repo" }),
+      token: "token-1",
+    })
+
+    expect(spec.create.ports.length).toBe(1)
+    expect(spec.create.ports[0]).toMatch(/^\d{1,5}:\d{1,5}$/)
+    expect(spec.create.ports[0]?.includes("/")).toBe(false)
+  })
+
   it("rejects allowlist mode with empty hosts", () => {
     const allowlistWithoutHosts = {
       ...makePolicy().profiles.strict,

@@ -64,9 +64,7 @@ export const VmNameSchema = z
   .max(128)
   .regex(/^[a-zA-Z0-9._-]+$/, "name must match /^[a-zA-Z0-9._-]+$/")
 export const EnvPairSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*=.*/, "env must be KEY=value")
-export const PortMappingSchema = z
-  .string()
-  .regex(/^\d{1,5}:\d{1,5}(\/(tcp|udp))?$/, "invalid port mapping")
+export const PortMappingSchema = z.string().regex(/^\d{1,5}:\d{1,5}$/, "invalid port mapping")
 
 export const GetPayloadSchema = z.null()
 

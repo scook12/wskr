@@ -655,7 +655,7 @@ async function buildWskrResolvedSpec(options: {
       cpus: profileConfig.runtime.cpus ?? cpus,
       dns,
       volumes,
-      ports: [`${hostPort}:${agentPort}/tcp`],
+      ports: [`${hostPort}:${agentPort}`],
       memoryMiB: profileConfig.runtime.memory_mib ?? memoryMiB,
     },
     start: {
