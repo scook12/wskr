@@ -101,6 +101,11 @@ type DoneState = {
   opId?: string
 }
 
+type UnixWebSocketTarget = {
+  socketPath: string
+  requestPath: string
+}
+
 function defer<T>(controller?: AbortController): Deferred<T> {
   let resolve!: (value: T) => void
   let reject!: (reason?: unknown) => void
@@ -119,8 +124,82 @@ function toErrorMessage(error: unknown): string {
   return "unknown rpc error"
 }
 
+function canonicalizeWebSocketUrl(url: string): string {
+  if (!url.startsWith("ws+unix:")) {
+    return url
+  }
+
+  const match = /^ws\+unix:(?:\/\/)?(.+?):(\/.*)$/.exec(url)
+  if (!match) {
+    return url
+  }
+
+  const rawSocketPath = match[1] ?? ""
+  const requestPath = match[2] ?? "/"
+
+  let decodedSocketPath = rawSocketPath
+  try {
+    decodedSocketPath = decodeURIComponent(rawSocketPath)
+  } catch {
+    // keep original when not URI-encoded
+  }
+
+  const socketPath = decodedSocketPath.startsWith("/") ? decodedSocketPath : `/${decodedSocketPath}`
+
+  return `ws+unix://${socketPath}:${requestPath}`
+}
+
+function parseUnixWebSocketTarget(url: string): UnixWebSocketTarget | undefined {
+  const canonical = canonicalizeWebSocketUrl(url)
+  const match = /^ws\+unix:\/\/(.+?):(\/.*)$/.exec(canonical)
+  if (!match) {
+    return undefined
+  }
+
+  return {
+    socketPath: match[1],
+    requestPath: match[2],
+  }
+}
+
+function toHostlessUnixWebSocketUrl(url: string): string | undefined {
+  const target = parseUnixWebSocketTarget(url)
+  if (!target) return undefined
+  return `ws+unix:${target.socketPath}:${target.requestPath}`
+}
+
+function isLikelyWrongSchemeError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  const message = error.message.toLowerCase()
+  return (
+    message.includes("wrong url scheme") ||
+    message.includes("expected a ws:") ||
+    message.includes("ws+unix")
+  )
+}
+
 function defaultWebSocketFactory(url: string, protocols?: string | string[]): WebSocket {
-  return new WebSocket(url, protocols)
+  const canonicalUrl = canonicalizeWebSocketUrl(url)
+  if (!canonicalUrl.startsWith("ws+unix:")) {
+    return new WebSocket(canonicalUrl, protocols)
+  }
+
+  const hostlessUrl = toHostlessUnixWebSocketUrl(canonicalUrl)
+  if (!hostlessUrl) {
+    return new WebSocket(canonicalUrl, protocols)
+  }
+  try {
+    return new WebSocket(canonicalUrl, protocols)
+  } catch (error) {
+    if (!isLikelyWrongSchemeError(error)) {
+      throw error
+    }
+  }
+
+  return new WebSocket(hostlessUrl, protocols)
 }
 
 export class KrunClient {
@@ -138,7 +217,7 @@ export class KrunClient {
   private updateListeners = new Set<(event: OpUpdate) => void>()
 
   constructor(options: KrunClientOptions = {}) {
-    this.url = options.url ?? "ws://127.0.0.1:8877/rpc"
+    this.url = canonicalizeWebSocketUrl(options.url ?? "ws://127.0.0.1:8877/rpc")
     this.protocols = options.protocols
     this.ackTimeoutMs = options.ackTimeoutMs ?? 5_000
     this.websocketFactory = options.websocketFactory ?? defaultWebSocketFactory
@@ -154,7 +233,16 @@ export class KrunClient {
     const { signal } = this.abortController
     this.connectPromise = new Promise<void>((resolve, reject) => {
       signal.addEventListener("abort", () => reject(signal.reason), { once: true })
-      const ws = this.websocketFactory(this.url, this.protocols)
+      let ws: WebSocket
+      try {
+        ws = this.websocketFactory(this.url, this.protocols)
+      } catch (error) {
+        const fallbackUrl = toHostlessUnixWebSocketUrl(this.url)
+        if (!fallbackUrl || !isLikelyWrongSchemeError(error)) {
+          throw error
+        }
+        ws = this.websocketFactory(fallbackUrl, this.protocols)
+      }
       this.ws = ws
 
       let settled = false

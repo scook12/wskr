@@ -17,6 +17,12 @@ const client = createKrunClient({ url: "ws://127.0.0.1:8877/rpc" })
 const result = await client.list(true)
 ```
 
+Unix socket endpoints are supported with `ws+unix` URLs, for example:
+
+```ts
+const client = createKrunClient({ url: "ws+unix:///usr/local/run/krunvmd.sock:/rpc" })
+```
+
 ## API Highlights
 
 - `createKrunClient(options)`

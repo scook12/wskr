@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it, mock } from "bun:test"
 import { createKrunClient, KrunClient, KrunClientError, rpcErrorToMessage } from "./index"
 
 type EventType = "open" | "message" | "error" | "close"
@@ -126,6 +126,49 @@ function buildDoneForKind(id: string, opId: string, kind: string) {
 }
 
 describe("KrunClient unit", () => {
+  it("normalizes ws+unix URL variants", async () => {
+    let socket: FakeWebSocket | null = null
+    const wsFactoryCalls: string[] = []
+    const client = new KrunClient({
+      url: "ws+unix:/usr/local/run/krunvmd.sock:/rpc",
+      websocketFactory: (url) => {
+        wsFactoryCalls.push(url)
+        socket = new FakeWebSocket()
+        return socket as unknown as WebSocket
+      },
+    })
+
+    const connectPromise = client.connect()
+    await waitFor(() => wsFactoryCalls.length === 1)
+    expect(wsFactoryCalls[0]).toBe("ws+unix:///usr/local/run/krunvmd.sock:/rpc")
+    ;(socket as FakeWebSocket).open()
+    await connectPromise
+  })
+
+  it("falls back to node ws for ws+unix wrong-scheme errors", async () => {
+    const calls: string[] = []
+    const factory = mock((url: string) => {
+      calls.push(url)
+      if (calls.length === 1) {
+        throw new Error("Wrong url scheme for WebSocket")
+      }
+      const socket = new FakeWebSocket()
+      queueMicrotask(() => socket.open())
+      return socket as unknown as WebSocket
+    })
+
+    const client = new KrunClient({
+      url: "ws+unix:///usr/local/run/krunvmd.sock:/rpc",
+      websocketFactory: factory as any,
+    })
+    await client.connect()
+
+    expect(calls).toEqual([
+      "ws+unix:///usr/local/run/krunvmd.sock:/rpc",
+      "ws+unix:/usr/local/run/krunvmd.sock:/rpc",
+    ])
+  })
+
   it("requests and resolves with ack + op.done", async () => {
     let socket: FakeWebSocket | null = null
     const client = new KrunClient({
