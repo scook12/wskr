@@ -15,7 +15,7 @@
     },
     "packages/agent-sandbox-provider": {
       "name": "@wskr/provider",
-      "version": "0.0.0",
+      "version": "0.1.2",
       "dependencies": {
         "@wskr/client": "workspace:*",
         "@wskr/types": "workspace:*",
@@ -25,15 +25,15 @@
     },
     "packages/client": {
       "name": "@wskr/client",
-      "version": "0.0.0",
+      "version": "0.1.2",
       "dependencies": {
-        "@wskr/types": "workspace:*",
+        "@wskr/types": "^0.1.2",
         "zod": "^4.4.3",
       },
     },
     "packages/opencode-plugin": {
       "name": "@wskr/opencode-plugin",
-      "version": "0.0.0",
+      "version": "0.1.2",
       "dependencies": {
         "@opencode-ai/plugin": "^1.14.50",
         "@wskr/provider": "workspace:*",
@@ -45,7 +45,7 @@
     },
     "packages/server": {
       "name": "@wskr/server",
-      "version": "0.0.0",
+      "version": "0.1.2",
       "bin": {
         "wskr-server": "./src/cli.ts",
       },
@@ -59,7 +59,7 @@
     },
     "packages/types": {
       "name": "@wskr/types",
-      "version": "0.0.0",
+      "version": "0.1.2",
       "dependencies": {
         "zod": "^4.4.3",
       },
