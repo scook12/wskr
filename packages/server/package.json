@@ -1,6 +1,6 @@
 {
   "name": "@wskr/server",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": false,
   "type": "module",
   "main": "./dist/index.js",
@@ -38,10 +38,10 @@
     "bun": ">=1.1.0"
   },
   "dependencies": {
-    "@wskr/types": "^0.1.5",
+    "@wskr/types": "^0.1.6",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@wskr/client": "^0.1.5"
+    "@wskr/client": "^0.1.6"
   }
 }

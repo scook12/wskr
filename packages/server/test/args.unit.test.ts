@@ -222,6 +222,39 @@ describe("argsForRequest", () => {
     })
   })
 
+  test("allows start command args that look like backend flags", () => {
+    const request = {
+      id: "1",
+      kind: "start",
+      payload: {
+        name: "vm-start",
+        command: "sandbox-agent",
+        args: ["server", "--host", "0.0.0.0", "--port", "3000", "--no-token"],
+        env: [],
+        cpus: 1,
+        memoryMiB: 512,
+      },
+    } as const
+
+    const result = argsForRequest(request, baseConfig)
+    expect(result.command).toBe("start")
+    expect(result.args).toEqual([
+      "--cpus",
+      "1",
+      "--mem",
+      "512",
+      "vm-start",
+      "sandbox-agent",
+      "server",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "3000",
+      "--no-token",
+    ])
+    expect(safeParseKrunvmInvocation(result).success).toBe(true)
+  })
+
   test("builds start args without command", () => {
     const request = {
       id: "1",

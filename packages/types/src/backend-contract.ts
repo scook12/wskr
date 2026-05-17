@@ -70,6 +70,11 @@ export const KrunvmInvocationSchema = z
     let positionalCount = 0
 
     for (let i = 0; i < value.args.length; i += 1) {
+      if (value.command === "start" && positionalCount >= 1) {
+        positionalCount += value.args.length - i
+        break
+      }
+
       const token = value.args[i]
       if (token === "--") {
         positionalCount += value.args.length - i - 1
