@@ -52,6 +52,7 @@ type LifecycleDeps = {
 
 const DEFAULT_HEALTH_TIMEOUT_MS = 20_000
 const HEALTH_RETRY_INTERVAL_MS = 250
+const SANDBOX_AGENT_HEALTH_PATH = "/v1/health"
 
 function getHealthTimeoutMs(): number {
   const raw = Bun.env.OPENCODE_SANDBOX_AGENT_READY_TIMEOUT_MS
@@ -70,7 +71,7 @@ async function waitForSandboxHealth(
 
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(new URL("/health", baseUrl), {
+      const response = await fetch(new URL(SANDBOX_AGENT_HEALTH_PATH, baseUrl), {
         signal: AbortSignal.timeout(Math.min(1500, timeoutMs)),
       })
       if (response.ok) {
@@ -86,7 +87,7 @@ async function waitForSandboxHealth(
 
   const detail = lastError instanceof Error ? lastError.message : String(lastError)
   throw new Error(
-    `sandbox-agent health check failed for ${baseUrl}/health within ${timeoutMs}ms: ${detail}`,
+    `sandbox-agent health check failed for ${baseUrl}${SANDBOX_AGENT_HEALTH_PATH} within ${timeoutMs}ms: ${detail}`,
   )
 }
 

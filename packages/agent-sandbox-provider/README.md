@@ -39,7 +39,7 @@ const provider = wskr({
 })
 ```
 
-Provider create lifecycle is `create -> boot -> /health readiness`.
+Provider create lifecycle is `create -> boot -> /v1/health readiness`.
 
 ## Development
 
