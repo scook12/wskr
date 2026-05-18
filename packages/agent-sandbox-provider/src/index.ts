@@ -1,4 +1,5 @@
 import {
+  type BootPayload,
   createKrunClient,
   type CreatePayload,
   type DeletePayload,
@@ -6,7 +7,6 @@ import {
   type KrunClient,
   type KrunClientOptions,
   type OpDone,
-  type StartPayload,
 } from "@wskr/client"
 import type { SandboxProvider } from "sandbox-agent"
 
@@ -23,7 +23,7 @@ export type WskrProviderSandbox = {
 export type WskrResolvedSandboxSpec = {
   vmName: string
   create: CreatePayload
-  start: StartPayload
+  boot: BootPayload
   baseUrl: string
 }
 
@@ -47,6 +47,47 @@ type LifecycleDeps = {
   resolveSpec: WskrProviderOptions["resolveSpec"]
   onCreate?: WskrProviderOptions["onCreate"]
   onDestroy?: WskrProviderOptions["onDestroy"]
+  waitForHealth?: (baseUrl: string, timeoutMs?: number) => Promise<void>
+}
+
+const DEFAULT_HEALTH_TIMEOUT_MS = 20_000
+const HEALTH_RETRY_INTERVAL_MS = 250
+
+function getHealthTimeoutMs(): number {
+  const raw = Bun.env.OPENCODE_SANDBOX_AGENT_READY_TIMEOUT_MS
+  if (!raw) return DEFAULT_HEALTH_TIMEOUT_MS
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_HEALTH_TIMEOUT_MS
+  return parsed
+}
+
+async function waitForSandboxHealth(
+  baseUrl: string,
+  timeoutMs = getHealthTimeoutMs(),
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  let lastError: unknown
+
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(new URL("/health", baseUrl), {
+        signal: AbortSignal.timeout(Math.min(1500, timeoutMs)),
+      })
+      if (response.ok) {
+        return
+      }
+      lastError = new Error(`health check returned status ${response.status}`)
+    } catch (error) {
+      lastError = error
+    }
+
+    await Bun.sleep(HEALTH_RETRY_INTERVAL_MS)
+  }
+
+  const detail = lastError instanceof Error ? lastError.message : String(lastError)
+  throw new Error(
+    `sandbox-agent health check failed for ${baseUrl}/health within ${timeoutMs}ms: ${detail}`,
+  )
 }
 
 function getClient(options: WskrProviderOptions): KrunClient {
@@ -90,8 +131,9 @@ function createLifecycle(client: KrunClient, deps: LifecycleDeps) {
     try {
       await ensureSuccess(createDone, `create VM '${spec.vmName}'`)
 
-      const startDone = await client.start(spec.start)
-      await ensureSuccess(startDone, `start VM '${spec.vmName}'`)
+      const bootDone = await client.boot(spec.boot)
+      await ensureSuccess(bootDone, `boot VM '${spec.vmName}'`)
+      await (deps.waitForHealth ?? waitForSandboxHealth)(spec.baseUrl)
     } catch (error) {
       try {
         const rollbackDone = await client.delete(toDeletePayload(spec.vmName))
@@ -164,6 +206,12 @@ export function wskr(options: WskrProviderOptions): WskrProvider {
     resolveSpec: options.resolveSpec,
     onCreate: options.onCreate,
     onDestroy: options.onDestroy,
+    waitForHealth: async (baseUrl) => {
+      if (Bun.env.WSKR_SKIP_SANDBOX_HEALTHCHECK === "1") {
+        return
+      }
+      await waitForSandboxHealth(baseUrl)
+    },
   })
 
   return {

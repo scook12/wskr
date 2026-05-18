@@ -27,7 +27,7 @@ const provider = wskr({
       ports: [],
       memoryMiB: 1024,
     },
-    start: {
+    boot: {
       name: "vm-build",
       command: "sandbox-agent",
       args: ["server", "--no-token"],
@@ -38,6 +38,8 @@ const provider = wskr({
   }),
 })
 ```
+
+Provider create lifecycle is `create -> boot -> /health readiness`.
 
 ## Development
 
