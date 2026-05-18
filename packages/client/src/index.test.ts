@@ -323,6 +323,26 @@ describe("KrunClient unit", () => {
         call: (client) => client.delete({ name: "vm-test" }),
       },
       {
+        kind: "boot",
+        payload: {
+          name: "vm-test",
+          command: "sandbox-agent",
+          args: ["server", "--no-token"],
+          env: [],
+          cpus: 1,
+          memoryMiB: 512,
+        },
+        call: (client) =>
+          client.boot({
+            name: "vm-test",
+            command: "sandbox-agent",
+            args: ["server", "--no-token"],
+            env: [],
+            cpus: 1,
+            memoryMiB: 512,
+          }),
+      },
+      {
         kind: "start",
         payload: {
           name: "vm-test",

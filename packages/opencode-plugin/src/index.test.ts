@@ -324,6 +324,8 @@ describe("plugin scope and mounts", () => {
     expect(spec.create.ports.length).toBe(1)
     expect(spec.create.ports[0]).toMatch(/^\d{1,5}:\d{1,5}$/)
     expect(spec.create.ports[0]?.includes("/")).toBe(false)
+    expect(spec.boot.command).toBe("sandbox-agent")
+    expect(spec.boot.args[0]).toBe("server")
   })
 
   it("rejects policy with invalid mount guest path shape", async () => {

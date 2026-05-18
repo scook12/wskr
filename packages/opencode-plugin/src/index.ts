@@ -658,7 +658,7 @@ async function buildWskrResolvedSpec(options: {
       ports: [`${hostPort}:${agentPort}`],
       memoryMiB: profileConfig.runtime.memory_mib ?? memoryMiB,
     },
-    start: {
+    boot: {
       name: vmName,
       command: startCommand,
       args: startArgs,

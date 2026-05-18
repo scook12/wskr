@@ -1,6 +1,6 @@
 {
   "name": "@wskr/client",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "private": false,
   "type": "module",
   "main": "./dist/index.js",
@@ -28,7 +28,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@wskr/types": "^0.1.7",
+    "@wskr/types": "^0.1.8",
     "zod": "^4.4.3"
   }
 }

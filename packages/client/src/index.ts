@@ -7,6 +7,7 @@ import {
   type ChangePayload,
   type CreatePayload,
   type DeletePayload,
+  type BootPayload,
   type GetPayload,
   type InspectPayload,
   type ListPayload,
@@ -28,6 +29,7 @@ export type {
   ChangePayload,
   CreatePayload,
   DeletePayload,
+  BootPayload,
   GetPayload,
   InspectPayload,
   ListPayload,
@@ -81,6 +83,7 @@ type OutboundRequestByKind = {
   get: { kind: "get"; payload: GetPayload }
   create: { kind: "create"; payload: CreatePayload }
   delete: { kind: "delete"; payload: DeletePayload }
+  boot: { kind: "boot"; payload: BootPayload }
   start: { kind: "start"; payload: StartPayload }
   inspect: { kind: "inspect"; payload: InspectPayload }
   changevm: { kind: "changevm"; payload: ChangePayload }
@@ -389,6 +392,10 @@ export class KrunClient {
 
   async start(payload: OutboundRequestByKind["start"]["payload"]): Promise<OpDone> {
     return this.request("start", payload)
+  }
+
+  async boot(payload: OutboundRequestByKind["boot"]["payload"]): Promise<OpDone> {
+    return this.request("boot", payload)
   }
 
   async inspect(payload: OutboundRequestByKind["inspect"]["payload"]): Promise<OpDone> {

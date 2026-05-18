@@ -33,6 +33,7 @@ export const KRUN_COMMANDS = [
   "get",
   "create",
   "delete",
+  "boot",
   "start",
   "inspect",
   "changevm",
@@ -44,6 +45,7 @@ export const REQUEST_KINDS = [
   "get",
   "create",
   "delete",
+  "boot",
   "start",
   "inspect",
   "changevm",
@@ -151,6 +153,17 @@ export const StartPayloadSchema = z
   })
   .strict()
 
+export const BootPayloadSchema = z
+  .object({
+    name: VmNameSchema,
+    command: z.string().min(1).max(512),
+    args: z.array(z.string().min(1).max(2048)).max(128).default([]),
+    env: z.array(EnvPairSchema).max(128).default([]),
+    cpus: z.number().int().min(1).max(64),
+    memoryMiB: z.number().int().min(64).max(262144),
+  })
+  .strict()
+
 export const ListPayloadSchema = z
   .object({
     debug: z.boolean().optional(),
@@ -167,6 +180,7 @@ export const RequestSchema = z.discriminatedUnion("kind", [
   z.object({ id: RequestIdSchema, kind: z.literal("get"), payload: GetPayloadSchema }),
   z.object({ id: RequestIdSchema, kind: z.literal("create"), payload: CreatePayloadSchema }),
   z.object({ id: RequestIdSchema, kind: z.literal("delete"), payload: DeletePayloadSchema }),
+  z.object({ id: RequestIdSchema, kind: z.literal("boot"), payload: BootPayloadSchema }),
   z.object({ id: RequestIdSchema, kind: z.literal("start"), payload: StartPayloadSchema }),
   z.object({ id: RequestIdSchema, kind: z.literal("inspect"), payload: InspectPayloadSchema }),
   z.object({ id: RequestIdSchema, kind: z.literal("changevm"), payload: ChangePayloadSchema }),
@@ -178,6 +192,7 @@ export type GetPayload = z.infer<typeof GetPayloadSchema>
 export type CreatePayload = z.infer<typeof CreatePayloadSchema>
 export type ChangePayload = z.infer<typeof ChangePayloadSchema>
 export type DeletePayload = z.infer<typeof DeletePayloadSchema>
+export type BootPayload = z.infer<typeof BootPayloadSchema>
 export type InspectPayload = z.infer<typeof InspectPayloadSchema>
 export type StartPayload = z.infer<typeof StartPayloadSchema>
 export type ListPayload = z.infer<typeof ListPayloadSchema>

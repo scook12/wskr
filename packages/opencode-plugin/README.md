@@ -21,6 +21,7 @@ bun add @wskr/opencode-plugin
 - `OPENCODE_SBX_POLICY_FILE`: override policy file path.
 - `OPENCODE_SANDBOX_AGENT_BASE_URL`: connect to existing sandbox-agent.
 - `OPENCODE_SANDBOX_AGENT_TOKEN`: token for sandbox-agent access.
+- `OPENCODE_SANDBOX_AGENT_READY_TIMEOUT_MS`: provider `/health` readiness timeout before create fails.
 - `OPENCODE_WSKR_CLIENT_URL`: explicit WSKR runtime client URL override.
 - `OPENCODE_WSKR_SILENCE_INSECURE_WS_WARNING`: set to `1` to suppress warn-only notices for remote `ws://` runtime URLs.
 
@@ -47,6 +48,7 @@ When provisioning through `@wskr/provider`, the plugin chooses the WSKR client U
 - Mounts are translated to krunvm `--volume host:guest` values.
 - Guest mount paths must be a single root child path (for example `/workspace`).
 - Mount `mode` is currently metadata only and is ignored for krunvm CLI arguments.
+- Sandbox lifecycle is provisioned via provider `boot` (non-blocking launch) with `/health` readiness checks.
 
 ## Development
 

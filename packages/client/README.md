@@ -17,6 +17,19 @@ const client = createKrunClient({ url: "ws://127.0.0.1:8877/rpc" })
 const result = await client.list(true)
 ```
 
+Use `boot` to launch a persistent in-VM service and return immediately:
+
+```ts
+await client.boot({
+  name: "vm-build",
+  command: "sandbox-agent",
+  args: ["server", "--no-token"],
+  env: [],
+  cpus: 1,
+  memoryMiB: 1024,
+})
+```
+
 Unix socket endpoints are supported with `ws+unix` URLs, for example:
 
 ```ts

@@ -2,6 +2,7 @@ import { z } from "zod"
 
 export const KRUNVM_BACKEND_COMMANDS = [
   "create",
+  "boot",
   "start",
   "inspect",
   "list",
@@ -33,6 +34,7 @@ export const KRUNVM_ALLOWED_FLAGS_BY_COMMAND: {
   [K in KrunvmBackendCommand]: ReadonlyArray<KrunvmOptionFlag>
 } = {
   create: ["--name", "--cpus", "--mem", "--dns", "--workdir", "--volume", "--port"],
+  boot: ["--cpus", "--mem", "--env"],
   changevm: [
     "--new-name",
     "--cpus",
@@ -51,6 +53,7 @@ export const KRUNVM_ALLOWED_FLAGS_BY_COMMAND: {
 
 const MIN_POSITIONAL_ARGS_BY_COMMAND: Record<KrunvmBackendCommand, number> = {
   create: 1,
+  boot: 1,
   start: 1,
   inspect: 1,
   list: 0,
@@ -70,7 +73,7 @@ export const KrunvmInvocationSchema = z
     let positionalCount = 0
 
     for (let i = 0; i < value.args.length; i += 1) {
-      if (value.command === "start" && positionalCount >= 1) {
+      if ((value.command === "start" || value.command === "boot") && positionalCount >= 1) {
         positionalCount += value.args.length - i
         break
       }
