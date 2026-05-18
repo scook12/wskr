@@ -64,6 +64,11 @@ Preflight checks include:
   - `ports` must be `host:guest` with each port in `0..65535`.
   - `volumes` must be `host:guest` with absolute host path and guest path as a single root child (for example `/workspace`).
 
+## Lifecycle semantics
+
+- `boot` is used for non-blocking VM launch intended for persistent in-VM services.
+- `start` is foreground task execution semantics.
+
 ## Development
 
 ```bash

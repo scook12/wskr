@@ -98,6 +98,31 @@ if (command === 'create' || command === 'inspect' || command === 'start' || comm
   process.exit(0)
 }
 
+if (command === 'start') {
+  const barrierIndex = args.indexOf('--')
+  if (barrierIndex < 0) {
+    console.error('missing start command separator')
+    process.exit(2)
+  }
+
+  const preArgs = args.slice(0, barrierIndex)
+  const postArgs = args.slice(barrierIndex + 1)
+  if (postArgs.length === 0) {
+    console.error('missing start command payload')
+    process.exit(2)
+  }
+
+  for (let i = 0; i < preArgs.length; i += 1) {
+    if (preArgs[i] === '--env' && !preArgs[i + 1]) {
+      console.error('missing --env value')
+      process.exit(2)
+    }
+  }
+
+  console.log(JSON.stringify({ command, args }))
+  process.exit(0)
+}
+
 console.error('unknown command')
 process.exit(2)
 `

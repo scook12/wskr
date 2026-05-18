@@ -1,4 +1,5 @@
 import type {
+  BootPayload,
   ChangePayload,
   CreatePayload,
   DeletePayload,
@@ -63,6 +64,17 @@ function buildStartArgs(payload: StartPayload): string[] {
   return args
 }
 
+function buildBootArgs(payload: BootPayload): string[] {
+  const args = ["--cpus", String(payload.cpus), "--mem", String(payload.memoryMiB)]
+
+  for (const envPair of payload.env) {
+    args.push("--env", envPair)
+  }
+
+  args.push(payload.name, "--", payload.command, ...payload.args)
+  return args
+}
+
 function buildChangeVmArgs(payload: ChangePayload): string[] {
   const args = [] as string[]
 
@@ -121,6 +133,9 @@ export function argsForRequest(
       break
     case "delete":
       invocation = { command: "delete", args: buildDeleteArgs(request.payload) }
+      break
+    case "boot":
+      invocation = { command: "boot", args: buildBootArgs(request.payload) }
       break
     case "inspect":
       invocation = { command: "inspect", args: buildInspectArgs(request.payload) }

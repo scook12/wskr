@@ -91,6 +91,25 @@ describe("parseIncomingMessage", () => {
     }
   })
 
+  test("parses valid boot message", () => {
+    const parsed = parseIncomingMessage(
+      JSON.stringify({
+        id: "req-1",
+        kind: "boot",
+        payload: {
+          name: "vm-boot",
+          command: "sandbox-agent",
+          args: ["server", "--no-token"],
+          env: [],
+          cpus: 1,
+          memoryMiB: 512,
+        },
+      }),
+    )
+
+    expect(parsed.kind).toBe("boot")
+  })
+
   test("throws invalid_message for out-of-range create port", () => {
     expect(() =>
       parseIncomingMessage(

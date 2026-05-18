@@ -79,6 +79,38 @@ async function runCommandDefault(
   timeoutMs: number,
   signal: AbortSignal,
 ): Promise<CommandResult> {
+  if (command === "boot") {
+    const argv = [config.krunPath, "start", ...args]
+    const startedAt = performance.now()
+
+    if (signal.aborted) {
+      throw new ProtocolError("cancelled", "operation cancelled by client")
+    }
+
+    try {
+      const child = Bun.spawn(argv, {
+        stdin: "ignore",
+        stdout: "ignore",
+        stderr: "ignore",
+        detached: true,
+      })
+      ;(child as { unref?: () => void }).unref?.()
+
+      return {
+        argv,
+        code: 0,
+        stdout: "",
+        stderr: "",
+        durationMs: Math.round(performance.now() - startedAt),
+      }
+    } catch (error) {
+      throw new ProtocolError("executor_error", "failed to spawn command", {
+        cause: error instanceof Error ? error.message : String(error),
+        argv,
+      })
+    }
+  }
+
   const argv = [config.krunPath, command, ...args]
   const startedAt = performance.now()
 

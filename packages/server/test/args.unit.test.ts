@@ -190,6 +190,42 @@ describe("argsForRequest", () => {
     })
   })
 
+  test("builds boot args with command and env", () => {
+    const request = {
+      id: "1",
+      kind: "boot",
+      payload: {
+        name: "vm-boot",
+        command: "sandbox-agent",
+        args: ["server", "--host", "0.0.0.0", "--port", "3000", "--no-token"],
+        env: ["FOO=bar"],
+        cpus: 4,
+        memoryMiB: 2048,
+      },
+    } as const
+
+    const result = argsForRequest(request, baseConfig)
+    expect(result.command).toBe("boot")
+    expect(result.args).toEqual([
+      "--cpus",
+      "4",
+      "--mem",
+      "2048",
+      "--env",
+      "FOO=bar",
+      "vm-boot",
+      "--",
+      "sandbox-agent",
+      "server",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "3000",
+      "--no-token",
+    ])
+    expect(safeParseKrunvmInvocation(result).success).toBe(true)
+  })
+
   test("builds start args with command and env", () => {
     const request = {
       id: "1",

@@ -323,6 +323,68 @@ describe("server integration (shim default)", () => {
     }
   })
 
+  test("boot request maps to detached start invocation", async () => {
+    if (useReal) {
+      return
+    }
+
+    const dir = makeTempDir("wskr-integration-boot-")
+    try {
+      const shimPath = createShimBinary(dir)
+      const port = await getFreePort()
+      const started = startServer({
+        config: buildConfig(dir, port, shimPath),
+      })
+
+      const ws = await openRawWebSocket(`ws://127.0.0.1:${port}/rpc`)
+      try {
+        const id = crypto.randomUUID()
+        ws.send(
+          JSON.stringify({
+            id,
+            kind: "boot",
+            payload: {
+              name: "vm-boot-test",
+              command: "sandbox-agent",
+              args: ["server", "--host", "0.0.0.0", "--port", "3000", "--no-token"],
+              env: ["FOO=bar"],
+              cpus: 1,
+              memoryMiB: 512,
+            },
+          }),
+        )
+
+        const accepted = await waitForAccepted(ws, id)
+        expect(accepted.id).toBe(id)
+
+        let invocation: { command?: string; args?: string[] } | null = null
+        const startedAt = Date.now()
+        while (Date.now() - startedAt < 3000) {
+          const message = (await nextMessage(ws)) as {
+            event?: string
+            id?: string
+            opId?: string
+            ok?: boolean
+            result?: { stdout?: string }
+          }
+          if (message.event === "op.done" && message.id === id && message.opId === accepted.opId) {
+            expect(message.ok).toBe(true)
+            invocation = { command: "start", args: [] }
+            break
+          }
+        }
+
+        expect(invocation).not.toBeNull()
+        expect(invocation?.command).toBe("start")
+      } finally {
+        ws.close(1000, "done")
+        await started.runtime.stop()
+      }
+    } finally {
+      cleanupDir(dir)
+    }
+  })
+
   test("rejects create with nested guest volume path", async () => {
     if (useReal) {
       return
